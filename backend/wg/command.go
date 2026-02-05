@@ -32,3 +32,24 @@ func SyncConfig(name string) error {
 	cmd := exec.Command("wg", "syncconf", name, path)
 	return cmd.Run()
 }
+
+// AddPeer 动态添加 peer（不重启接口）
+func AddPeer(interfaceName, publicKey, presharedKey, allowedIPs string) error {
+	args := []string{"set", interfaceName, "peer", publicKey, "allowed-ips", allowedIPs}
+	if presharedKey != "" {
+		args = append(args, "preshared-key", "/dev/stdin")
+		cmd := exec.Command("wg", args...)
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return err
+		}
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		stdin.Write([]byte(presharedKey))
+		stdin.Close()
+		return cmd.Wait()
+	}
+	cmd := exec.Command("wg", args...)
+	return cmd.Run()
+}

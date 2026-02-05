@@ -73,5 +73,13 @@ func CreatePeer(c *gin.Context) {
 		return
 	}
 
+	// 更新服务端配置文件
+	peers, _ := db.GetPeersByServer(server.ID)
+	config := wg.GenerateServerConfig(server, peers)
+	wg.SaveServerConfig(server.Name, config)
+
+	// 动态添加 peer，不需要重启接口
+	wg.AddPeer(server.Name, peer.PublicKey, peer.PresharedKey, peer.AllowedIPs)
+
 	c.JSON(http.StatusOK, peer)
 }
