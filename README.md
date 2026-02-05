@@ -15,6 +15,9 @@
 
 ---
 
+<img width="2880" height="1478" alt="login" src="https://github.com/user-attachments/assets/b8bb4f66-523c-47be-96b6-31c6a0db1160" />
+
+
 ## ✨ 功能特性
 
 - 🖥️ **服务器配置管理** - 轻松配置 WireGuard 服务器参数
