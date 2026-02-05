@@ -3,7 +3,7 @@
     <h1 class="text-2xl font-bold mb-6 dark:text-white">服务器设置</h1>
 
     <!-- 导入现有配置 -->
-    <div v-if="isNew || showImportPanel" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 dark:bg-yellow-900/20 dark:border-yellow-800">
+    <div v-if="!loading && (isNew || showImportPanel)" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 dark:bg-yellow-900/20 dark:border-yellow-800">
       <h3 class="text-lg font-semibold text-yellow-800 mb-2 dark:text-yellow-200">导入现有配置</h3>
       <p class="text-sm text-yellow-700 mb-4 dark:text-yellow-300">
         从服务器现有的 WireGuard 配置文件导入。<strong>注意：这会覆盖当前 UI 中的配置！</strong>
@@ -33,7 +33,7 @@
     </div>
 
     <!-- 显示导入按钮（当已有配置且面板隐藏时） -->
-    <div v-if="!isNew && !showImportPanel" class="mb-6">
+    <div v-if="!loading && !isNew && !showImportPanel" class="mb-6">
       <button @click="showImportPanel = true" class="text-yellow-600 hover:text-yellow-800 text-sm">
         从系统配置文件导入...
       </button>
@@ -108,6 +108,7 @@ const form = ref({
 
 const isNew = ref(true)
 const showImportPanel = ref(false)
+const loading = ref(true)
 
 const importForm = ref({
   config_path: '/etc/wireguard/wg0.conf',
@@ -127,6 +128,8 @@ onMounted(async () => {
     isNew.value = false
   } catch (e) {
     // Server not configured yet
+  } finally {
+    loading.value = false
   }
 })
 
