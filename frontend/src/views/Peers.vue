@@ -1,7 +1,8 @@
 <template>
   <div>
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold dark:text-white">客户端管理</h1>
+    <h1 class="text-2xl font-bold mb-6 dark:text-white">客户端管理</h1>
+
+    <div class="flex justify-end mb-4">
       <button @click="showAddModal = true" class="btn-primary">添加客户端</button>
     </div>
 
@@ -62,7 +63,7 @@
     </div>
 
     <!-- Add Modal -->
-    <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
+    <div v-if="showAddModal" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">添加客户端</h3>
         <input v-model="newPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
@@ -84,7 +85,7 @@
     </div>
 
     <!-- Edit Modal -->
-    <div v-if="editingPeer" class="modal-overlay" @click.self="editingPeer = null">
+    <div v-if="editingPeer" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">编辑客户端</h3>
         <input v-model="editPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />

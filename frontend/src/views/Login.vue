@@ -1,5 +1,17 @@
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+    <!-- 居中 Toast 通知 -->
+    <Transition name="toast-center">
+      <div v-if="toast.show" class="fixed top-20 left-1/2 -translate-x-1/2 z-50">
+        <div class="rounded-lg shadow-lg p-4 flex items-center space-x-3 bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800">
+          <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p class="font-medium text-red-800 dark:text-red-200">{{ toast.message }}</p>
+        </div>
+      </div>
+    </Transition>
+
     <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-full max-w-md">
       <!-- WireGuard Logo -->
       <div class="flex justify-center mb-4">
@@ -23,9 +35,6 @@
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
           <input v-model="form.password" type="password" class="input-field" required />
         </div>
-        <div v-if="error" class="mb-4 p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded">
-          {{ error }}
-        </div>
         <button type="submit" class="w-full btn-primary">
           {{ initialized ? '登录' : '创建账户' }}
         </button>
@@ -41,8 +50,13 @@ import axios from 'axios'
 
 const router = useRouter()
 const initialized = ref(true)
-const error = ref('')
 const form = ref({ username: '', password: '' })
+const toast = ref({ show: false, message: '' })
+
+const showToast = (message) => {
+  toast.value = { show: true, message }
+  setTimeout(() => { toast.value.show = false }, 3000)
+}
 
 onMounted(async () => {
   const saved = localStorage.getItem('theme')
@@ -59,7 +73,6 @@ onMounted(async () => {
 })
 
 const submit = async () => {
-  error.value = ''
   try {
     const url = initialized.value ? '/api/login' : '/api/register'
     const res = await axios.post(url, form.value)
@@ -67,14 +80,13 @@ const submit = async () => {
     if (!initialized.value) {
       initialized.value = true
       form.value.password = ''
-      error.value = ''
       return
     }
 
     localStorage.setItem('token', res.data.token)
     router.push('/')
   } catch (e) {
-    error.value = e.response?.data?.error || '操作失败'
+    showToast(e.response?.data?.error || '操作失败')
   }
 }
 </script>
