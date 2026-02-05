@@ -1,5 +1,32 @@
 <template>
   <div>
+    <!-- Toast 通知 -->
+    <Transition name="toast">
+      <div v-if="toast.show" class="fixed top-4 right-4 z-50 max-w-sm">
+        <div class="rounded-lg shadow-lg p-4 flex items-center space-x-3" :class="toastClass">
+          <div class="flex-shrink-0">
+            <svg v-if="toast.type === 'success'" class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <svg v-else-if="toast.type === 'error'" class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <svg v-else class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <p class="font-medium" :class="toastTextClass">{{ toast.message }}</p>
+          </div>
+          <button @click="toast.show = false" class="flex-shrink-0 text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <h1 class="text-2xl font-bold mb-6 dark:text-white">服务器设置</h1>
 
     <!-- 导入现有配置 -->
@@ -34,8 +61,11 @@
 
     <!-- 显示导入按钮（当已有配置且面板隐藏时） -->
     <div v-if="!loading && !isNew && !showImportPanel" class="mb-6">
-      <button @click="showImportPanel = true" class="text-yellow-600 hover:text-yellow-800 text-sm">
-        从系统配置文件导入...
+      <button @click="showImportPanel = true" class="inline-flex items-center px-4 py-2 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50 transition-colors duration-200">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        从系统配置文件导入
       </button>
     </div>
 
@@ -94,8 +124,33 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+
+const toast = ref({
+  show: false,
+  type: 'success',
+  message: ''
+})
+
+const toastClass = computed(() => ({
+  'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800': toast.value.type === 'success',
+  'bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800': toast.value.type === 'error',
+  'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800': toast.value.type === 'warning'
+}))
+
+const toastTextClass = computed(() => ({
+  'text-green-800 dark:text-green-200': toast.value.type === 'success',
+  'text-red-800 dark:text-red-200': toast.value.type === 'error',
+  'text-yellow-800 dark:text-yellow-200': toast.value.type === 'warning'
+}))
+
+const showToast = (type, message, duration = 3000) => {
+  toast.value = { show: true, type, message }
+  if (duration > 0) {
+    setTimeout(() => { toast.value.show = false }, duration)
+  }
+}
 
 const form = ref({
   name: '',
@@ -134,51 +189,61 @@ onMounted(async () => {
 })
 
 const save = async () => {
-  if (isNew.value) {
-    await axios.post('/api/server', form.value)
-  } else {
-    await axios.put('/api/server', form.value)
+  try {
+    if (isNew.value) {
+      await axios.post('/api/server', form.value)
+    } else {
+      await axios.put('/api/server', form.value)
+    }
+    showToast('success', '保存成功！')
+    setTimeout(() => { location.reload() }, 1500)
+  } catch (e) {
+    showToast('error', e.response?.data?.error || '保存失败')
   }
-  alert('保存成功！')
 }
 
 const sync = async () => {
-  await axios.post('/api/sync')
-  alert('配置已同步到系统！')
+  try {
+    await axios.post('/api/sync')
+    showToast('success', '配置已同步到系统！')
+  } catch (e) {
+    showToast('error', e.response?.data?.error || '同步失败')
+  }
 }
 
 const changePassword = async () => {
   if (!pwdForm.value.old_password || !pwdForm.value.new_password) {
-    alert('请填写完整')
+    showToast('warning', '请填写完整')
     return
   }
   if (pwdForm.value.new_password.length < 6) {
-    alert('新密码至少6位')
+    showToast('warning', '新密码至少6位')
     return
   }
   try {
     await axios.post('/api/change-password', pwdForm.value)
-    alert('密码修改成功')
+    showToast('success', '密码修改成功')
     pwdForm.value = { old_password: '', new_password: '' }
   } catch (e) {
-    alert(e.response?.data?.error || '修改失败')
+    showToast('error', e.response?.data?.error || '修改失败')
   }
 }
 
 const importConfig = async () => {
   if (!importForm.value.endpoint) {
-    alert('请填写公网地址')
+    showToast('warning', '请填写公网地址')
     return
   }
   try {
     const res = await axios.post('/api/import', importForm.value)
-    alert(res.data.message)
+    showToast('success', res.data.message)
     // 重新加载服务器配置
     const serverRes = await axios.get('/api/server')
     form.value = serverRes.data
     isNew.value = false
+    showImportPanel.value = false
   } catch (e) {
-    alert(e.response?.data?.error || '导入失败')
+    showToast('error', e.response?.data?.error || '导入失败')
   }
 }
 </script>

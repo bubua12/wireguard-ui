@@ -11,7 +11,7 @@
       </svg>
     </button>
 
-    <nav v-if="!isLoginPage" class="bg-white shadow dark:bg-gray-800">
+    <nav v-if="!isLoginPage" class="fixed top-0 left-0 w-screen bg-white shadow dark:bg-gray-800 z-40">
       <div class="max-w-7xl mx-auto px-4">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
@@ -41,7 +41,7 @@
         </div>
       </div>
     </nav>
-    <main :class="isLoginPage ? '' : 'max-w-7xl mx-auto py-6 px-4'">
+    <main :class="isLoginPage ? '' : 'max-w-7xl mx-auto py-6 px-4 pt-20'">
       <router-view />
     </main>
   </div>
