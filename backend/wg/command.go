@@ -53,3 +53,9 @@ func AddPeer(interfaceName, publicKey, presharedKey, allowedIPs string) error {
 	cmd := exec.Command("wg", args...)
 	return cmd.Run()
 }
+
+// RemovePeer 动态移除 peer（不重启接口）
+func RemovePeer(interfaceName, publicKey string) error {
+	cmd := exec.Command("wg", "set", interfaceName, "peer", publicKey, "remove")
+	return cmd.Run()
+}

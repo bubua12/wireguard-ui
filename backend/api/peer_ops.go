@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"wireguard-ui/db"
+	"wireguard-ui/wg"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,10 +49,33 @@ func UpdatePeer(c *gin.Context) {
 func DeletePeer(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 
+	// 先获取 peer 信息
+	peer, err := db.GetPeer(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		return
+	}
+
+	// 获取 server 信息
+	server, err := db.GetFirstServer()
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Server not configured"})
+		return
+	}
+
+	// 从数据库删除
 	if err := db.DeletePeer(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// 更新配置文件
+	peers, _ := db.GetPeersByServer(server.ID)
+	config := wg.GenerateServerConfig(server, peers)
+	wg.SaveServerConfig(server.Name, config)
+
+	// 动态移除 peer
+	wg.RemovePeer(server.Name, peer.PublicKey)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Deleted"})
 }
