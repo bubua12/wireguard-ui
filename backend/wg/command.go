@@ -1,9 +1,13 @@
 package wg
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
+	"time"
 )
 
 const configDir = "/etc/wireguard"
@@ -58,4 +62,34 @@ func AddPeer(interfaceName, publicKey, presharedKey, allowedIPs string) error {
 func RemovePeer(interfaceName, publicKey string) error {
 	cmd := exec.Command("wg", "set", interfaceName, "peer", publicKey, "remove")
 	return cmd.Run()
+}
+
+// GetPeerHandshakes 获取所有 peer 的最后握手时间
+func GetPeerHandshakes(interfaceName string) (map[string]int64, error) {
+	cmd := exec.Command("wg", "show", interfaceName, "latest-handshakes")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]int64)
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			publicKey := parts[0]
+			timestamp, _ := strconv.ParseInt(parts[1], 10, 64)
+			result[publicKey] = timestamp
+		}
+	}
+	return result, nil
+}
+
+// IsPeerOnline 判断 peer 是否在线（3分钟内有握手）
+func IsPeerOnline(lastHandshake int64) bool {
+	if lastHandshake == 0 {
+		return false
+	}
+	return time.Now().Unix()-lastHandshake < 180
 }

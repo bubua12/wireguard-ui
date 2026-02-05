@@ -32,6 +32,7 @@ func SetupRouter() *gin.Engine {
 
 		// 客户端管理
 		api.GET("/peers", GetPeers)
+		api.GET("/peers/status", GetPeersStatus)
 		api.POST("/peers", CreatePeer)
 		api.PUT("/peers/:id", UpdatePeer)
 		api.DELETE("/peers/:id", DeletePeer)

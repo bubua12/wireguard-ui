@@ -94,6 +94,37 @@ body {
   @apply bg-white rounded-lg p-6 w-full max-w-md dark:bg-gray-800;
 }
 
+/* 在线状态指示器 */
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+  position: relative;
+}
+
+.status-online {
+  background-color: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+.status-offline {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px #22c55e;
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 12px #22c55e;
+  }
+}
+
 /* Toast 动画 */
 .toast-enter-active {
   animation: toast-in 0.3s ease-out;

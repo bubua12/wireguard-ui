@@ -18,7 +18,12 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
           <tr v-for="peer in peers" :key="peer.id">
-            <td class="px-6 py-4 whitespace-nowrap dark:text-white">{{ peer.name }}</td>
+            <td class="px-6 py-4 whitespace-nowrap dark:text-white">
+              <div class="flex items-center">
+                <span class="status-dot" :class="isOnline(peer.public_key) ? 'status-online' : 'status-offline'"></span>
+                {{ peer.name }}
+              </div>
+            </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
             <td class="px-6 py-4 whitespace-nowrap">
               <span :class="peer.enabled ? 'badge-green' : 'badge-gray'">
@@ -121,10 +126,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const peers = ref([])
+const peerStatus = ref({})
+const statusTimer = ref(null)
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -148,6 +155,23 @@ const loadPeers = async () => {
   } catch (e) {
     console.error(e)
   }
+}
+
+const loadStatus = async () => {
+  try {
+    const res = await axios.get('/api/peers/status')
+    const statusMap = {}
+    for (const item of res.data || []) {
+      statusMap[item.public_key] = item.online
+    }
+    peerStatus.value = statusMap
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const isOnline = (publicKey) => {
+  return peerStatus.value[publicKey] || false
 }
 
 const addPeer = async () => {
@@ -240,5 +264,15 @@ const showQR = async (peer) => {
   }
 }
 
-onMounted(loadPeers)
+onMounted(() => {
+  loadPeers()
+  loadStatus()
+  statusTimer.value = setInterval(loadStatus, 5000)
+})
+
+onUnmounted(() => {
+  if (statusTimer.value) {
+    clearInterval(statusTimer.value)
+  }
+})
 </script>
