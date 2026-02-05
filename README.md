@@ -27,32 +27,14 @@
 - 🌙 **主题切换** - 支持暗黑/亮色主题
 - 🔐 **安全认证** - JWT Token 登录认证
 
-## 🛠️ 技术栈
+## 🛠️ 功能展示
+客户端管理
+<img width="2880" height="1478" alt="clients" src="https://github.com/user-attachments/assets/925fb97d-ab31-4537-907e-fdb7eb5d3262" />
 
-<table>
-  <tr>
-    <td align="center" width="96">
-      <img src="https://skillicons.dev/icons?i=go" width="48" height="48" alt="Go" />
-      <br>Go
-    </td>
-    <td align="center" width="96">
-      <img src="https://skillicons.dev/icons?i=vue" width="48" height="48" alt="Vue" />
-      <br>Vue 3
-    </td>
-    <td align="center" width="96">
-      <img src="https://skillicons.dev/icons?i=vite" width="48" height="48" alt="Vite" />
-      <br>Vite
-    </td>
-    <td align="center" width="96">
-      <img src="https://skillicons.dev/icons?i=tailwind" width="48" height="48" alt="Tailwind" />
-      <br>Tailwind
-    </td>
-    <td align="center" width="96">
-      <img src="https://skillicons.dev/icons?i=sqlite" width="48" height="48" alt="SQLite" />
-      <br>SQLite
-    </td>
-  </tr>
-</table>
+仪表盘
+<img width="2880" height="1478" alt="dashboard" src="https://github.com/user-attachments/assets/24da812c-ddaf-4ee5-a5dc-853f65709d59" />
+
+
 
 ## 🚀 快速开始
 
