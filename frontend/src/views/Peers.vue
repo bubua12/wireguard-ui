@@ -67,8 +67,9 @@
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">添加客户端</h3>
         <input v-model="newPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
+        <input v-model="newPeerIP" type="text" placeholder="IP地址（选填，如 10.0.8.100/32）" class="input-field mb-4" />
         <div class="flex justify-end space-x-2">
-          <button @click="showAddModal = false" class="btn-secondary">取消</button>
+          <button @click="closeAddModal" class="btn-secondary">取消</button>
           <button @click="addPeer" class="btn-primary">添加</button>
         </div>
       </div>
@@ -126,6 +127,7 @@ import axios from 'axios'
 const peers = ref([])
 const showAddModal = ref(false)
 const newPeerName = ref('')
+const newPeerIP = ref('')
 const qrPeer = ref(null)
 const qrCodeUrl = ref('')
 const editingPeer = ref(null)
@@ -150,10 +152,19 @@ const loadPeers = async () => {
 
 const addPeer = async () => {
   if (!newPeerName.value) return
-  await axios.post('/api/peers', { name: newPeerName.value })
-  newPeerName.value = ''
-  showAddModal.value = false
+  const data = { name: newPeerName.value }
+  if (newPeerIP.value) {
+    data.allowed_ips = newPeerIP.value
+  }
+  await axios.post('/api/peers', data)
+  closeAddModal()
   loadPeers()
+}
+
+const closeAddModal = () => {
+  showAddModal.value = false
+  newPeerName.value = ''
+  newPeerIP.value = ''
 }
 
 const editPeer = (peer) => {

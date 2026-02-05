@@ -26,7 +26,8 @@ func GetPeers(c *gin.Context) {
 }
 
 type CreatePeerReq struct {
-	Name string `json:"name" binding:"required"`
+	Name       string `json:"name" binding:"required"`
+	AllowedIPs string `json:"allowed_ips"`
 }
 
 func CreatePeer(c *gin.Context) {
@@ -51,10 +52,13 @@ func CreatePeer(c *gin.Context) {
 
 	psk, _ := wg.GeneratePresharedKey()
 
-	// 分配IP
-	ip, err := db.GetNextAvailableIP(server.ID, server.Address)
-	if err != nil {
-		ip = "10.0.0.2/32"
+	// 分配IP：如果指定了IP则使用指定的，否则自动分配
+	ip := req.AllowedIPs
+	if ip == "" {
+		ip, err = db.GetNextAvailableIP(server.ID, server.Address)
+		if err != nil {
+			ip = "10.0.0.2/32"
+		}
 	}
 
 	peer := &model.Peer{
