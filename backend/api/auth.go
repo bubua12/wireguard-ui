@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"wireguard-ui/db"
 
@@ -11,6 +13,80 @@ import (
 )
 
 var jwtSecret = []byte("wireguard-ui-secret-key-change-in-production")
+
+// IP 登录限制
+const (
+	maxLoginAttempts = 10              // 最大失败次数
+	lockDuration     = 30 * time.Minute // 锁定时长
+)
+
+type loginAttempt struct {
+	count    int
+	lockedAt time.Time
+}
+
+var (
+	loginAttempts = make(map[string]*loginAttempt)
+	attemptsMutex sync.RWMutex
+)
+
+// 获取客户端真实IP
+func getClientIP(c *gin.Context) string {
+	// 优先从 X-Real-IP 获取（nginx 代理）
+	if ip := c.GetHeader("X-Real-IP"); ip != "" {
+		return ip
+	}
+	// 其次从 X-Forwarded-For 获取
+	if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
+		return strings.Split(ip, ",")[0]
+	}
+	return c.ClientIP()
+}
+
+// 检查IP是否被锁定
+func isIPLocked(ip string) (bool, time.Duration) {
+	attemptsMutex.RLock()
+	defer attemptsMutex.RUnlock()
+
+	if attempt, exists := loginAttempts[ip]; exists {
+		if attempt.count >= maxLoginAttempts {
+			remaining := lockDuration - time.Since(attempt.lockedAt)
+			if remaining > 0 {
+				return true, remaining
+			}
+		}
+	}
+	return false, 0
+}
+
+// 记录登录失败
+func recordFailedLogin(ip string) int {
+	attemptsMutex.Lock()
+	defer attemptsMutex.Unlock()
+
+	if _, exists := loginAttempts[ip]; !exists {
+		loginAttempts[ip] = &loginAttempt{}
+	}
+
+	attempt := loginAttempts[ip]
+	// 如果锁定已过期，重置计数
+	if attempt.count >= maxLoginAttempts && time.Since(attempt.lockedAt) > lockDuration {
+		attempt.count = 0
+	}
+
+	attempt.count++
+	if attempt.count >= maxLoginAttempts {
+		attempt.lockedAt = time.Now()
+	}
+	return attempt.count
+}
+
+// 清除登录失败记录
+func clearFailedLogin(ip string) {
+	attemptsMutex.Lock()
+	defer attemptsMutex.Unlock()
+	delete(loginAttempts, ip)
+}
 
 type LoginReq struct {
 	Username string `json:"username" binding:"required"`
@@ -23,6 +99,19 @@ type RegisterReq struct {
 }
 
 func Login(c *gin.Context) {
+	ip := getClientIP(c)
+
+	// 检查IP是否被锁定
+	if locked, remaining := isIPLocked(ip); locked {
+		minutes := int(remaining.Minutes()) + 1
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":             fmt.Sprintf("登录失败次数过多，请%d分钟后再试", minutes),
+			"locked":            true,
+			"remaining_minutes": minutes,
+		})
+		return
+	}
+
 	var req LoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -31,9 +120,24 @@ func Login(c *gin.Context) {
 
 	user, err := db.GetUserByUsername(req.Username)
 	if err != nil || !db.ValidatePassword(user, req.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		count := recordFailedLogin(ip)
+		remaining := maxLoginAttempts - count
+		if remaining <= 0 {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "登录失败次数过多，IP已被锁定30分钟",
+				"locked": true,
+			})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "用户名或密码错误",
+				"remaining_attempts": remaining,
+			})
+		}
 		return
 	}
+
+	// 登录成功，清除失败记录
+	clearFailedLogin(ip)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":  user.ID,
