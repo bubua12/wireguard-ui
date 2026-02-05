@@ -1,0 +1,25 @@
+# 样例忽略文件
+
+#设置忽略文件
+node_modules/
+dist/
+package-lock.json
+
+#MAVEN打包文件忽略
+target/
+
+#文件格式忽略
+*.log
+*.class
+*.war
+
+#文件忽略
+.idea/
+.idea
+.vscode
+.project
+.classpath
+.settings
+
+wireguard-ui
+*.db
