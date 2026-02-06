@@ -23,3 +23,10 @@ target/
 
 wireguard-ui
 *.db
+
+# 忽略智能IDE的一些隐藏文件
+*.idea
+**/.DS_Store
+**/.kiro
+**/.vscode
+**/.trae
