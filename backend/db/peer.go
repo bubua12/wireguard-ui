@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"wireguard-ui/model"
 )
 
@@ -42,4 +43,16 @@ func GetPeersByServer(serverID int64) ([]model.Peer, error) {
 		peers = append(peers, p)
 	}
 	return peers, nil
+}
+
+func CheckIPDuplicate(serverID int64, ip string) error {
+	var count int
+	err := DB.QueryRow(`SELECT COUNT(*) FROM peers WHERE server_id = ? AND allowed_ips = ?`, serverID, ip).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("IP地址 %s 已被使用", ip)
+	}
+	return nil
 }

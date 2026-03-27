@@ -59,6 +59,18 @@ func CreatePeer(c *gin.Context) {
 		if err != nil {
 			ip = "10.0.0.2/32"
 		}
+	} else {
+		// 验证IP格式必须带/32
+		if len(ip) < 4 || ip[len(ip)-3:] != "/32" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "IP地址必须以/32结尾，例如：10.0.8.177/32"})
+			return
+		}
+
+		// 验证IP不重复
+		if err := db.CheckIPDuplicate(server.ID, ip); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	peer := &model.Peer{

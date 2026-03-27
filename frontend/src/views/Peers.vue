@@ -71,6 +71,9 @@
     <div v-if="showAddModal" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">添加客户端</h3>
+        <div v-if="addError" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200">
+          {{ addError }}
+        </div>
         <input v-model="newPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
         <input v-model="newPeerIP" type="text" placeholder="IP地址（选填，如 10.0.8.100/32）" class="input-field mb-4" />
         <div class="flex justify-end space-x-2">
@@ -135,6 +138,7 @@ const statusTimer = ref(null)
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
+const addError = ref('')
 const qrPeer = ref(null)
 const qrCodeUrl = ref('')
 const editingPeer = ref(null)
@@ -176,19 +180,25 @@ const isOnline = (publicKey) => {
 
 const addPeer = async () => {
   if (!newPeerName.value) return
+  addError.value = ''
   const data = { name: newPeerName.value }
   if (newPeerIP.value) {
     data.allowed_ips = newPeerIP.value
   }
-  await axios.post('/api/peers', data)
-  closeAddModal()
-  loadPeers()
+  try {
+    await axios.post('/api/peers', data)
+    closeAddModal()
+    loadPeers()
+  } catch (e) {
+    addError.value = e.response?.data?.error || '添加失败'
+  }
 }
 
 const closeAddModal = () => {
   showAddModal.value = false
   newPeerName.value = ''
   newPeerIP.value = ''
+  addError.value = ''
 }
 
 const editPeer = (peer) => {
