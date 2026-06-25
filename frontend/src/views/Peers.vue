@@ -10,14 +10,20 @@
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300">名称</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300">IP地址</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300">状态</th>
+            <th @click="toggleSort('name')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
+              名称 <span class="ml-1 text-xs">{{ sortIcon('name') }}</span>
+            </th>
+            <th @click="toggleSort('ip')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
+              IP地址 <span class="ml-1 text-xs">{{ sortIcon('ip') }}</span>
+            </th>
+            <th @click="toggleSort('status')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
+              状态 <span class="ml-1 text-xs">{{ sortIcon('status') }}</span>
+            </th>
             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-300">操作</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-          <tr v-for="peer in peers" :key="peer.id">
+          <tr v-for="peer in sortedPeers" :key="peer.id">
             <td class="px-6 py-4 whitespace-nowrap dark:text-white">
               <div class="flex items-center">
                 <span class="status-dot" :class="isOnline(peer.public_key) ? 'status-online' : 'status-offline'"></span>
@@ -129,12 +135,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const peers = ref([])
 const peerStatus = ref({})
 const statusTimer = ref(null)
+const sortKey = ref('')       // '' | 'name' | 'ip' | 'status'
+const sortOrder = ref('asc')  // 'asc' | 'desc'
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -177,6 +185,40 @@ const loadStatus = async () => {
 const isOnline = (publicKey) => {
   return peerStatus.value[publicKey] || false
 }
+
+const toggleSort = (key) => {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortOrder.value = 'asc'
+  }
+}
+
+const sortIcon = (key) => {
+  if (sortKey.value !== key) return '↕'
+  return sortOrder.value === 'asc' ? '↑' : '↓'
+}
+
+const sortedPeers = computed(() => {
+  if (!sortKey.value) return peers.value
+  const list = [...peers.value]
+  const dir = sortOrder.value === 'asc' ? 1 : -1
+  return list.sort((a, b) => {
+    if (sortKey.value === 'name') {
+      return a.name.localeCompare(b.name) * dir
+    }
+    if (sortKey.value === 'ip') {
+      return (a.allowed_ips || '').localeCompare(b.allowed_ips || '') * dir
+    }
+    if (sortKey.value === 'status') {
+      const va = a.enabled ? 1 : 0
+      const vb = b.enabled ? 1 : 0
+      return (va - vb) * dir
+    }
+    return 0
+  })
+})
 
 const addPeer = async () => {
   if (!newPeerName.value) return
