@@ -120,6 +120,10 @@ body {
   @apply bg-white rounded-lg p-6 w-full max-w-md dark:bg-gray-800;
 }
 
+.modal-content-lg {
+  @apply bg-white rounded-lg p-6 w-full max-w-lg dark:bg-gray-800;
+}
+
 /* 在线状态指示器 */
 .status-dot {
   width: 10px;
