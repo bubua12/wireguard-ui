@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"wireguard-ui/db"
 	"wireguard-ui/wg"
 
@@ -15,7 +14,10 @@ type UpdatePeerReq struct {
 }
 
 func UpdatePeer(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
 
 	var req UpdatePeerReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,35 +49,34 @@ func UpdatePeer(c *gin.Context) {
 }
 
 func DeletePeer(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
 
-	// 先获取 peer 信息
 	peer, err := db.GetPeer(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
 		return
 	}
 
-	// 获取 server 信息
 	server, err := db.GetFirstServer()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not configured"})
 		return
 	}
 
-	// 从数据库删除
 	if err := db.DeletePeer(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 更新配置文件
-	peers, _ := db.GetPeersByServer(server.ID)
-	config := wg.GenerateServerConfig(server, peers)
-	wg.SaveServerConfig(server.Name, config)
+	var warning error
+	if err := persistPeers(server); err != nil {
+		warning = err
+	} else if err := wg.ApplyPeerRemove(server, peer.PublicKey); err != nil {
+		warning = err
+	}
 
-	// 动态移除 peer
-	wg.RemovePeer(server.Name, peer.PublicKey)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Deleted"})
+	applyWarning(c, gin.H{"message": "Deleted"}, warning)
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"wireguard-ui/db"
 	"wireguard-ui/model"
 	"wireguard-ui/wg"
@@ -14,12 +15,14 @@ type ImportRequest struct {
 	ConfigPath string `json:"config_path"`
 	Endpoint   string `json:"endpoint"`
 	DNS        string `json:"dns"`
+	FullTunnel bool   `json:"full_tunnel"`
+	EnableNAT  bool   `json:"enable_nat"`
 }
 
 type ImportResult struct {
-	Server      *model.Server `json:"server"`
-	PeersCount  int           `json:"peers_count"`
-	Message     string        `json:"message"`
+	Server     *model.Server `json:"server"`
+	PeersCount int           `json:"peers_count"`
+	Message    string        `json:"message"`
 }
 
 func ImportConfig(c *gin.Context) {
@@ -28,28 +31,37 @@ func ImportConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数"})
 		return
 	}
-
-	if req.ConfigPath == "" {
-		req.ConfigPath = "/etc/wireguard/wg0.conf"
+	if err := wg.ValidateEndpoint(req.Endpoint); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	// 解析配置文件
-	parsed, err := wg.ParseConfigFile(req.ConfigPath)
+	path, err := wg.ValidateImportPath(wg.ConfigDir(), req.ConfigPath)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 从私钥生成公钥
-	publicKey, err := wg.GeneratePublicKey(parsed.Interface.PrivateKey)
+	parsed, err := wg.ParseConfigFile(path)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法生成公钥"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if parsed.Interface.PrivateKey == "" || parsed.Interface.Address == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "配置文件缺少 Interface 的 PrivateKey 或 Address"})
 		return
 	}
 
-	// 创建服务器配置
+	publicKey, err := wg.GeneratePublicKey(parsed.Interface.PrivateKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法生成公钥: " + err.Error()})
+		return
+	}
+
+	iface := wg.InterfaceNameFromPath(path)
 	server := &model.Server{
-		Name:       "wg0",
+		Name:       iface,
+		Interface:  iface,
 		PrivateKey: parsed.Interface.PrivateKey,
 		PublicKey:  publicKey,
 		Address:    parsed.Interface.Address,
@@ -57,49 +69,48 @@ func ImportConfig(c *gin.Context) {
 		Endpoint:   req.Endpoint,
 		DNS:        req.DNS,
 		MTU:        parsed.Interface.MTU,
+		FullTunnel: req.FullTunnel,
+		EnableNAT:  req.EnableNAT,
 	}
-
-	// 设置默认值
-	if server.ListenPort == 0 {
-		server.ListenPort = 51820
-	}
-	if server.DNS == "" {
+	defaultsForServer(server)
+	if parsed.Interface.DNS != "" && req.DNS == "" {
 		server.DNS = parsed.Interface.DNS
 	}
-	if server.DNS == "" {
-		server.DNS = "8.8.8.8"
-	}
-	if server.MTU == 0 {
-		server.MTU = 1420
-	}
-
-	// 保存服务器
-	if err := db.CreateServer(server); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存服务器配置失败: " + err.Error()})
+	if err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.ListenPort, server.MTU); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 导入客户端
-	importedCount := 0
+	peers := make([]model.Peer, 0, len(parsed.Peers))
 	for i, p := range parsed.Peers {
-		peer := &model.Peer{
-			ServerID:            server.ID,
-			Name:                fmt.Sprintf("peer-%d", i+1),
-			PrivateKey:          "",  // 服务端没有客户端私钥
+		if p.PublicKey == "" || strings.TrimSpace(p.AllowedIPs) == "" {
+			continue
+		}
+		name := fmt.Sprintf("peer-%d", i+1)
+		keepalive := p.PersistentKeepalive
+		if keepalive == 0 {
+			keepalive = 25
+		}
+		peers = append(peers, model.Peer{
+			Name:                name,
+			PrivateKey:          "",
 			PublicKey:           p.PublicKey,
 			PresharedKey:        p.PresharedKey,
-			AllowedIPs:          p.AllowedIPs,
-			PersistentKeepalive: p.PersistentKeepalive,
+			AllowedIPs:          strings.TrimSpace(p.AllowedIPs),
+			PersistentKeepalive: keepalive,
 			Enabled:             true,
-		}
-		if err := db.CreatePeer(peer); err == nil {
-			importedCount++
-		}
+			HasPrivateKey:       false,
+		})
+	}
+
+	if err := db.ReplaceAllConfig(server, peers); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "导入失败: " + err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, ImportResult{
 		Server:     server,
-		PeersCount: importedCount,
-		Message:    fmt.Sprintf("成功导入服务器配置和 %d 个客户端", importedCount),
+		PeersCount: len(peers),
+		Message:    fmt.Sprintf("已覆盖导入服务器 %s 和 %d 个客户端（导入的客户端没有私钥，无法下载配置）", server.Interface, len(peers)),
 	})
 }

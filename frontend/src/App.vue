@@ -22,7 +22,7 @@
             </svg>
             <span class="text-xl font-bold text-gray-800 dark:text-white">WireGuard UI</span>
           </div>
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-4 flex-wrap">
             <router-link to="/" class="nav-link">仪表盘</router-link>
             <router-link to="/peers" class="nav-link">客户端</router-link>
             <router-link to="/settings" class="nav-link">设置</router-link>

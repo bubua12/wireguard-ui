@@ -12,41 +12,49 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("wireguard-ui-secret-key-change-in-production")
+var jwtSecret []byte
 
-// IP 登录限制
+func SetJWTSecret(secret []byte) {
+	jwtSecret = append([]byte(nil), secret...)
+}
+
 const (
-	maxLoginAttempts = 10              // 最大失败次数
-	lockDuration     = 30 * time.Minute // 锁定时长
+	maxLoginAttempts = 10
+	lockDuration     = 30 * time.Minute
+	attemptIdleFor   = 30 * time.Minute
 )
 
 type loginAttempt struct {
 	count    int
 	lockedAt time.Time
+	lastAt   time.Time
 }
 
 var (
 	loginAttempts = make(map[string]*loginAttempt)
-	attemptsMutex sync.RWMutex
+	attemptsMutex sync.Mutex
 )
 
-// 获取客户端真实IP
 func getClientIP(c *gin.Context) string {
-	// 优先从 X-Real-IP 获取（nginx 代理）
-	if ip := c.GetHeader("X-Real-IP"); ip != "" {
-		return ip
-	}
-	// 其次从 X-Forwarded-For 获取
-	if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
-		return strings.Split(ip, ",")[0]
-	}
 	return c.ClientIP()
 }
 
-// 检查IP是否被锁定
+func cleanupAttemptsLocked(now time.Time) {
+	for ip, attempt := range loginAttempts {
+		if now.Sub(attempt.lastAt) > attemptIdleFor {
+			delete(loginAttempts, ip)
+			continue
+		}
+		if attempt.count >= maxLoginAttempts && now.Sub(attempt.lockedAt) > lockDuration {
+			delete(loginAttempts, ip)
+		}
+	}
+}
+
 func isIPLocked(ip string) (bool, time.Duration) {
-	attemptsMutex.RLock()
-	defer attemptsMutex.RUnlock()
+	attemptsMutex.Lock()
+	defer attemptsMutex.Unlock()
+	cleanupAttemptsLocked(time.Now())
 
 	if attempt, exists := loginAttempts[ip]; exists {
 		if attempt.count >= maxLoginAttempts {
@@ -54,34 +62,34 @@ func isIPLocked(ip string) (bool, time.Duration) {
 			if remaining > 0 {
 				return true, remaining
 			}
+			delete(loginAttempts, ip)
 		}
 	}
 	return false, 0
 }
 
-// 记录登录失败
 func recordFailedLogin(ip string) int {
 	attemptsMutex.Lock()
 	defer attemptsMutex.Unlock()
+	now := time.Now()
+	cleanupAttemptsLocked(now)
 
-	if _, exists := loginAttempts[ip]; !exists {
-		loginAttempts[ip] = &loginAttempt{}
+	attempt, exists := loginAttempts[ip]
+	if !exists {
+		attempt = &loginAttempt{}
+		loginAttempts[ip] = attempt
 	}
-
-	attempt := loginAttempts[ip]
-	// 如果锁定已过期，重置计数
-	if attempt.count >= maxLoginAttempts && time.Since(attempt.lockedAt) > lockDuration {
+	if attempt.count >= maxLoginAttempts && now.Sub(attempt.lockedAt) > lockDuration {
 		attempt.count = 0
 	}
-
 	attempt.count++
+	attempt.lastAt = now
 	if attempt.count >= maxLoginAttempts {
-		attempt.lockedAt = time.Now()
+		attempt.lockedAt = now
 	}
 	return attempt.count
 }
 
-// 清除登录失败记录
 func clearFailedLogin(ip string) {
 	attemptsMutex.Lock()
 	defer attemptsMutex.Unlock()
@@ -95,13 +103,12 @@ type LoginReq struct {
 
 type RegisterReq struct {
 	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 func Login(c *gin.Context) {
 	ip := getClientIP(c)
 
-	// 检查IP是否被锁定
 	if locked, remaining := isIPLocked(ip); locked {
 		minutes := int(remaining.Minutes()) + 1
 		c.JSON(http.StatusTooManyRequests, gin.H{
@@ -120,23 +127,25 @@ func Login(c *gin.Context) {
 
 	user, err := db.GetUserByUsername(req.Username)
 	if err != nil || !db.ValidatePassword(user, req.Password) {
+		if err != nil {
+			_ = db.ValidatePassword(nil, req.Password)
+		}
 		count := recordFailedLogin(ip)
 		remaining := maxLoginAttempts - count
 		if remaining <= 0 {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "登录失败次数过多，IP已被锁定30分钟",
+				"error":  "登录失败次数过多，IP已被锁定30分钟",
 				"locked": true,
 			})
 		} else {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "用户名或密码错误",
+				"error":              "用户名或密码错误",
 				"remaining_attempts": remaining,
 			})
 		}
 		return
 	}
 
-	// 登录成功，清除失败记录
 	clearFailedLogin(ip)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -155,7 +164,11 @@ func Login(c *gin.Context) {
 }
 
 func Register(c *gin.Context) {
-	count, _ := db.GetUserCount()
+	count, err := db.GetUserCount()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check users"})
+		return
+	}
 	if count > 0 {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Registration disabled"})
 		return
@@ -163,12 +176,12 @@ func Register(c *gin.Context) {
 
 	var req RegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "用户名必填，密码至少8位"})
 		return
 	}
 
 	if err := db.CreateUser(req.Username, req.Password); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -176,7 +189,11 @@ func Register(c *gin.Context) {
 }
 
 func CheckInit(c *gin.Context) {
-	count, _ := db.GetUserCount()
+	count, err := db.GetUserCount()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check users"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"initialized": count > 0})
 }
 
@@ -191,6 +208,9 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		tokenString := strings.TrimPrefix(auth, "Bearer ")
 		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
+			}
 			return jwtSecret, nil
 		})
 
@@ -200,30 +220,41 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+		if username, _ := claims["username"].(string); username != "" {
+			c.Set("username", username)
+		}
 		c.Next()
 	}
 }
 
 type ChangePasswordReq struct {
 	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
 func ChangePassword(c *gin.Context) {
 	var req ChangePasswordReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少6位"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少8位"})
 		return
 	}
 
-	auth := c.GetHeader("Authorization")
-	tokenString := strings.TrimPrefix(auth, "Bearer ")
-	token, _ := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
-
-	claims := token.Claims.(jwt.MapClaims)
-	username := claims["username"].(string)
+	usernameVal, ok := c.Get("username")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	username, _ := usernameVal.(string)
+	if username == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	user, err := db.GetUserByUsername(username)
 	if err != nil {
@@ -237,7 +268,7 @@ func ChangePassword(c *gin.Context) {
 	}
 
 	if err := db.UpdatePassword(username, req.NewPassword); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "修改失败"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 

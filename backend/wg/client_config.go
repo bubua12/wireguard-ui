@@ -6,16 +6,21 @@ import (
 	"wireguard-ui/model"
 )
 
-// GetNetworkCIDR 从服务器地址提取网段 CIDR（例如 10.0.8.1/24 -> 10.0.8.0/24）
 func GetNetworkCIDR(address string) string {
 	_, ipNet, err := net.ParseCIDR(address)
 	if err != nil {
-		return "10.0.8.0/24" // 默认值
+		return address
 	}
 	return ipNet.String()
 }
 
-// GenerateClientConfig 生成客户端配置文件内容
+func ClientAllowedIPs(server *model.Server) string {
+	if server.FullTunnel {
+		return "0.0.0.0/0, ::/0"
+	}
+	return GetNetworkCIDR(server.Address)
+}
+
 func GenerateClientConfig(server *model.Server, peer *model.Peer) string {
 	config := fmt.Sprintf(`[Interface]
 PrivateKey = %s
@@ -27,16 +32,13 @@ DNS = %s
 		config += fmt.Sprintf("MTU = %d\n", server.MTU)
 	}
 
-	// 使用服务器网段作为 AllowedIPs，而不是全流量转发
-	allowedIPs := GetNetworkCIDR(server.Address)
-
 	config += fmt.Sprintf(`
 [Peer]
 PublicKey = %s
 Endpoint = %s
 AllowedIPs = %s
 PersistentKeepalive = %d
-`, server.PublicKey, server.Endpoint, allowedIPs, peer.PersistentKeepalive)
+`, server.PublicKey, server.Endpoint, ClientAllowedIPs(server), peer.PersistentKeepalive)
 
 	if peer.PresharedKey != "" {
 		config += fmt.Sprintf("PresharedKey = %s\n", peer.PresharedKey)

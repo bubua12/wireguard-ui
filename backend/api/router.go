@@ -1,36 +1,64 @@
 package api
 
 import (
+	"io/fs"
+	"net/http"
+	"strings"
+	"wireguard-ui/config"
+	"wireguard-ui/web"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter() *gin.Engine {
-	r := gin.Default()
+func SetupRouter(cfg *config.Config) *gin.Engine {
+	if cfg.Debug {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
-	// CORS 配置
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
+	r := gin.New()
+	r.Use(gin.Recovery())
+	if cfg.Debug {
+		r.Use(gin.Logger())
+	}
+
+	if cfg.TrustProxy {
+		_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
+	} else {
+		_ = r.SetTrustedProxies(nil)
+	}
+
+	corsCfg := cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
-	}))
+		AllowCredentials: false,
+	}
+	if len(cfg.CORSOrigins) == 1 && cfg.CORSOrigins[0] == "*" {
+		corsCfg.AllowAllOrigins = true
+	} else {
+		corsCfg.AllowOrigins = cfg.CORSOrigins
+	}
+	r.Use(cors.New(corsCfg))
 
-	// 公开路由
+	SetJWTSecret(cfg.JWTSecret)
+
 	r.POST("/api/login", Login)
 	r.POST("/api/register", Register)
 	r.GET("/api/init", CheckInit)
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 
-	// 需要认证的 API 路由组
 	api := r.Group("/api")
 	api.Use(AuthMiddleware())
 	{
-		// 服务器配置
 		api.GET("/server", GetServer)
 		api.POST("/server", CreateServer)
 		api.PUT("/server", UpdateServer)
+		api.GET("/status", GetStatus)
 
-		// 客户端管理
 		api.GET("/peers", GetPeers)
 		api.GET("/peers/status", GetPeersStatus)
 		api.POST("/peers", CreatePeer)
@@ -38,19 +66,38 @@ func SetupRouter() *gin.Engine {
 		api.DELETE("/peers/:id", DeletePeer)
 		api.POST("/peers/:id/toggle", TogglePeer)
 
-		// 配置下载
 		api.GET("/peers/:id/config", GetPeerConfig)
 		api.GET("/peers/:id/qrcode", GetPeerQRCode)
 
-		// 同步配置到系统
 		api.POST("/sync", SyncConfig)
-
-		// 导入现有配置
 		api.POST("/import", ImportConfig)
-
-		// 用户管理
 		api.POST("/change-password", ChangePassword)
 	}
 
+	serveFrontend(r)
 	return r
+}
+
+func serveFrontend(r *gin.Engine) {
+	sub, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		return
+	}
+	fileServer := http.FileServer(http.FS(sub))
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		path := strings.TrimPrefix(c.Request.URL.Path, "/")
+		if path != "" {
+			if f, err := sub.Open(path); err == nil {
+				_ = f.Close()
+				fileServer.ServeHTTP(c.Writer, c.Request)
+				return
+			}
+		}
+		c.Request.URL.Path = "/"
+		fileServer.ServeHTTP(c.Writer, c.Request)
+	})
 }

@@ -3,19 +3,26 @@ package main
 import (
 	"log"
 	"wireguard-ui/api"
+	"wireguard-ui/config"
 	"wireguard-ui/db"
+	"wireguard-ui/wg"
 )
 
 func main() {
-	// 初始化数据库
-	if err := db.Init("wireguard.db"); err != nil {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	wg.SetConfigDir(cfg.ConfigDir)
+
+	if err := db.Init(cfg.DBPath); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// 启动 API 服务
-	r := api.SetupRouter()
-	log.Println("WireGuard UI starting on :8081")
-	if err := r.Run(":8081"); err != nil {
+	r := api.SetupRouter(cfg)
+	log.Printf("WireGuard UI listening on %s (db=%s)", cfg.Listen, cfg.DBPath)
+	if err := r.Run(cfg.Listen); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

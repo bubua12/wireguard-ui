@@ -14,6 +14,10 @@ func SyncConfig(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not configured"})
 		return
 	}
+	if err := wg.ValidateInterfaceName(server.Interface); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	peers, err := db.GetPeersByServer(server.ID)
 	if err != nil {
@@ -21,17 +25,15 @@ func SyncConfig(c *gin.Context) {
 		return
 	}
 
-	config := wg.GenerateServerConfig(server, peers)
-
-	if err := wg.SaveServerConfig(server.Name, config); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
+	if err := wg.PersistServerConfig(server, peers); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := wg.SyncConfig(server.Name); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync config"})
+	if err := wg.SyncConfig(server.Interface); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Config synced"})
+	c.JSON(http.StatusOK, gin.H{"message": "Config synced", "interface": server.Interface, "up": wg.InterfaceExists(server.Interface)})
 }

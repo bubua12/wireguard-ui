@@ -2,8 +2,7 @@
 
 #设置忽略文件
 node_modules/
-dist/
-package-lock.json
+frontend/dist/
 
 #MAVEN打包文件忽略
 target/
@@ -22,7 +21,16 @@ target/
 .settings
 
 wireguard-ui
+bin/
 *.db
+*.db-wal
+*.db-shm
+.jwt_secret
+data/
+
+# 构建进二进制的前端产物（保留占位 index.html）
+backend/web/dist/*
+!backend/web/dist/index.html
 
 # 忽略智能IDE的一些隐藏文件
 *.idea

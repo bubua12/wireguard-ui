@@ -19,48 +19,53 @@ func GetServer(c *gin.Context) {
 }
 
 type CreateServerReq struct {
-	Name       string `json:"name" binding:"required"`
+	Name       string `json:"name"`
+	Interface  string `json:"interface"`
 	Address    string `json:"address" binding:"required"`
 	ListenPort int    `json:"listen_port"`
 	Endpoint   string `json:"endpoint" binding:"required"`
 	DNS        string `json:"dns"`
 	MTU        int    `json:"mtu"`
+	FullTunnel bool   `json:"full_tunnel"`
+	EnableNAT  bool   `json:"enable_nat"`
 }
 
 func CreateServer(c *gin.Context) {
+	if n, err := db.ServerCount(); err == nil && n > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "服务器已配置，请使用更新或导入覆盖"})
+		return
+	}
+
 	var req CreateServerReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 生成密钥对
-	privateKey, publicKey, err := wg.GenerateKeyPair()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate keys"})
-		return
-	}
-
 	server := &model.Server{
 		Name:       req.Name,
-		PrivateKey: privateKey,
-		PublicKey:  publicKey,
+		Interface:  req.Interface,
 		Address:    req.Address,
 		ListenPort: req.ListenPort,
 		Endpoint:   req.Endpoint,
 		DNS:        req.DNS,
 		MTU:        req.MTU,
+		FullTunnel: req.FullTunnel,
+		EnableNAT:  req.EnableNAT,
+	}
+	defaultsForServer(server)
+	if err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.ListenPort, server.MTU); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	if server.ListenPort == 0 {
-		server.ListenPort = 51820
+	privateKey, publicKey, err := wg.GenerateKeyPair()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-	if server.DNS == "" {
-		server.DNS = "8.8.8.8"
-	}
-	if server.MTU == 0 {
-		server.MTU = 1420
-	}
+	server.PrivateKey = privateKey
+	server.PublicKey = publicKey
 
 	if err := db.CreateServer(server); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

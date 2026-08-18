@@ -1,5 +1,13 @@
 <template>
   <div>
+    <Transition name="toast">
+      <div v-if="toast.show" class="fixed top-4 right-4 z-50 max-w-sm">
+        <div class="rounded-lg shadow-lg p-4 bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800">
+          <p class="text-yellow-800 dark:text-yellow-200">{{ toast.message }}</p>
+        </div>
+      </div>
+    </Transition>
+
     <h1 class="text-2xl font-bold mb-6 dark:text-white">客户端管理</h1>
 
     <div class="flex justify-end mb-4">
@@ -10,24 +18,37 @@
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
-            <th @click="toggleSort('name')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
-              名称 <span class="ml-1 text-xs">{{ sortIcon('name') }}</span>
+            <th class="px-6 py-3 text-left">
+              <button type="button" class="sort-btn" @click="toggleSort('name')">
+                名称
+                <SortCarets :active="sortKey === 'name'" :order="sortOrder" />
+              </button>
             </th>
-            <th @click="toggleSort('ip')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
-              IP地址 <span class="ml-1 text-xs">{{ sortIcon('ip') }}</span>
+            <th class="px-6 py-3 text-left">
+              <button type="button" class="sort-btn" @click="toggleSort('ip')">
+                IP地址
+                <SortCarets :active="sortKey === 'ip'" :order="sortOrder" />
+              </button>
             </th>
-            <th @click="toggleSort('status')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase dark:text-gray-300 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-100">
-              状态 <span class="ml-1 text-xs">{{ sortIcon('status') }}</span>
+            <th class="px-6 py-3 text-left">
+              <button type="button" class="sort-btn" @click="toggleSort('status')">
+                状态
+                <SortCarets :active="sortKey === 'status'" :order="sortOrder" />
+              </button>
             </th>
             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-300">操作</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+          <tr v-if="sortedPeers.length === 0">
+            <td colspan="4" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">暂无客户端，点击右上角添加</td>
+          </tr>
           <tr v-for="peer in sortedPeers" :key="peer.id">
             <td class="px-6 py-4 whitespace-nowrap dark:text-white">
               <div class="flex items-center">
                 <span class="status-dot" :class="isOnline(peer.public_key) ? 'status-online' : 'status-offline'"></span>
                 {{ peer.name }}
+                <span v-if="!peer.has_private_key" class="ml-2 text-xs text-yellow-600 dark:text-yellow-400">导入</span>
               </div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
@@ -51,12 +72,12 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                 </button>
-                <button @click="downloadConfig(peer)" class="btn-icon btn-icon-green" title="下载配置">
+                <button @click="downloadConfig(peer)" class="btn-icon btn-icon-green disabled:opacity-40" title="下载配置" :disabled="!peer.has_private_key">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                   </svg>
                 </button>
-                <button @click="showQR(peer)" class="btn-icon btn-icon-purple" title="二维码">
+                <button @click="showQR(peer)" class="btn-icon btn-icon-purple disabled:opacity-40" title="二维码" :disabled="!peer.has_private_key">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
                   </svg>
@@ -73,7 +94,6 @@
       </table>
     </div>
 
-    <!-- Add Modal -->
     <div v-if="showAddModal" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">添加客户端</h3>
@@ -81,7 +101,7 @@
           {{ addError }}
         </div>
         <input v-model="newPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
-        <input v-model="newPeerIP" type="text" placeholder="IP地址（选填，如 10.0.8.100/32）" class="input-field mb-4" />
+        <input v-model="newPeerIP" type="text" placeholder="IP地址（选填，如 10.0.0.10/32）" class="input-field mb-4" />
         <div class="flex justify-end space-x-2">
           <button @click="closeAddModal" class="btn-secondary">取消</button>
           <button @click="addPeer" class="btn-primary">添加</button>
@@ -89,17 +109,15 @@
       </div>
     </div>
 
-    <!-- QR Modal -->
-    <div v-if="qrPeer" class="modal-overlay" @click.self="qrPeer = null">
+    <div v-if="qrPeer" class="modal-overlay" @click.self="closeQR">
       <div class="modal-content text-center">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">{{ qrPeer.name }}</h3>
         <img v-if="qrCodeUrl" :src="qrCodeUrl" class="mx-auto" />
         <div v-else class="py-8 text-gray-500">加载中...</div>
-        <button @click="qrPeer = null" class="btn-secondary mt-4">关闭</button>
+        <button @click="closeQR" class="btn-secondary mt-4">关闭</button>
       </div>
     </div>
 
-    <!-- Edit Modal -->
     <div v-if="editingPeer" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">编辑客户端</h3>
@@ -111,7 +129,6 @@
       </div>
     </div>
 
-    <!-- Confirm Modal -->
     <div v-if="confirmModal.show" class="modal-overlay" @click.self="confirmModal.show = false">
       <div class="modal-content">
         <div class="flex items-center mb-4">
@@ -137,12 +154,13 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import SortCarets from '../components/SortCarets.vue'
 
 const peers = ref([])
 const peerStatus = ref({})
 const statusTimer = ref(null)
-const sortKey = ref('')       // '' | 'name' | 'ip' | 'status'
-const sortOrder = ref('asc')  // 'asc' | 'desc'
+const sortKey = ref('')
+const sortOrder = ref('asc')
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -151,6 +169,7 @@ const qrPeer = ref(null)
 const qrCodeUrl = ref('')
 const editingPeer = ref(null)
 const editPeerName = ref('')
+const toast = ref({ show: false, message: '' })
 const confirmModal = ref({
   show: false,
   title: '',
@@ -159,6 +178,17 @@ const confirmModal = ref({
   confirmText: '确定',
   onConfirm: () => {}
 })
+
+const showToast = (message) => {
+  toast.value = { show: true, message }
+  setTimeout(() => { toast.value.show = false }, 4000)
+}
+
+const noteWarning = (data) => {
+  if (data && data.warning) {
+    showToast('已保存到数据库，但未能应用到接口：' + data.warning)
+  }
+}
 
 const loadPeers = async () => {
   try {
@@ -187,17 +217,24 @@ const isOnline = (publicKey) => {
 }
 
 const toggleSort = (key) => {
-  if (sortKey.value === key) {
-    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  } else {
+  if (sortKey.value !== key) {
     sortKey.value = key
     sortOrder.value = 'asc'
+    return
   }
+  if (sortOrder.value === 'asc') {
+    sortOrder.value = 'desc'
+    return
+  }
+  sortKey.value = ''
+  sortOrder.value = 'asc'
 }
 
-const sortIcon = (key) => {
-  if (sortKey.value !== key) return '↕'
-  return sortOrder.value === 'asc' ? '↑' : '↓'
+const ipToNum = (cidr) => {
+  const ip = (cidr || '').split('/')[0].split(',')[0].trim()
+  const parts = ip.split('.').map(n => parseInt(n, 10))
+  if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return 0
+  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]
 }
 
 const sortedPeers = computed(() => {
@@ -209,7 +246,7 @@ const sortedPeers = computed(() => {
       return a.name.localeCompare(b.name) * dir
     }
     if (sortKey.value === 'ip') {
-      return (a.allowed_ips || '').localeCompare(b.allowed_ips || '') * dir
+      return (ipToNum(a.allowed_ips) - ipToNum(b.allowed_ips)) * dir
     }
     if (sortKey.value === 'status') {
       const va = a.enabled ? 1 : 0
@@ -228,7 +265,8 @@ const addPeer = async () => {
     data.allowed_ips = newPeerIP.value
   }
   try {
-    await axios.post('/api/peers', data)
+    const res = await axios.post('/api/peers', data)
+    noteWarning(res.data)
     closeAddModal()
     loadPeers()
   } catch (e) {
@@ -250,9 +288,13 @@ const editPeer = (peer) => {
 
 const savePeer = async () => {
   if (!editPeerName.value) return
-  await axios.put(`/api/peers/${editingPeer.value.id}`, { name: editPeerName.value })
-  editingPeer.value = null
-  loadPeers()
+  try {
+    await axios.put(`/api/peers/${editingPeer.value.id}`, { name: editPeerName.value })
+    editingPeer.value = null
+    loadPeers()
+  } catch (e) {
+    showToast(e.response?.data?.error || '保存失败')
+  }
 }
 
 const confirmToggle = (peer) => {
@@ -267,9 +309,14 @@ const confirmToggle = (peer) => {
 }
 
 const doToggle = async (peer) => {
-  await axios.post(`/api/peers/${peer.id}/toggle`, { enabled: !peer.enabled })
-  confirmModal.value.show = false
-  loadPeers()
+  try {
+    const res = await axios.post(`/api/peers/${peer.id}/toggle`, { enabled: !peer.enabled })
+    noteWarning(res.data)
+    confirmModal.value.show = false
+    loadPeers()
+  } catch (e) {
+    showToast(e.response?.data?.error || '操作失败')
+  }
 }
 
 const confirmDelete = (peer) => {
@@ -284,12 +331,21 @@ const confirmDelete = (peer) => {
 }
 
 const doDelete = async (peer) => {
-  await axios.delete(`/api/peers/${peer.id}`)
-  confirmModal.value.show = false
-  loadPeers()
+  try {
+    const res = await axios.delete(`/api/peers/${peer.id}`)
+    noteWarning(res.data)
+    confirmModal.value.show = false
+    loadPeers()
+  } catch (e) {
+    showToast(e.response?.data?.error || '删除失败')
+  }
 }
 
 const downloadConfig = async (peer) => {
+  if (!peer.has_private_key) {
+    showToast('导入的客户端没有私钥，无法生成配置')
+    return
+  }
   try {
     const res = await axios.get(`/api/peers/${peer.id}/config`, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([res.data]))
@@ -301,18 +357,30 @@ const downloadConfig = async (peer) => {
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
   } catch (e) {
-    console.error('下载配置失败', e)
+    showToast(e.response?.data?.error || '下载配置失败')
+  }
+}
+
+const closeQR = () => {
+  qrPeer.value = null
+  if (qrCodeUrl.value) {
+    window.URL.revokeObjectURL(qrCodeUrl.value)
+    qrCodeUrl.value = ''
   }
 }
 
 const showQR = async (peer) => {
+  if (!peer.has_private_key) {
+    showToast('导入的客户端没有私钥，无法生成二维码')
+    return
+  }
+  closeQR()
   qrPeer.value = peer
-  qrCodeUrl.value = ''
   try {
     const res = await axios.get(`/api/peers/${peer.id}/qrcode`, { responseType: 'blob' })
     qrCodeUrl.value = window.URL.createObjectURL(res.data)
   } catch (e) {
-    console.error('获取二维码失败', e)
+    showToast(e.response?.data?.error || '获取二维码失败')
   }
 }
 
@@ -326,5 +394,6 @@ onUnmounted(() => {
   if (statusTimer.value) {
     clearInterval(statusTimer.value)
   }
+  closeQR()
 })
 </script>

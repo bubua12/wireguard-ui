@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"wireguard-ui/db"
 	"wireguard-ui/model"
 	"wireguard-ui/wg"
@@ -36,6 +37,11 @@ func CreatePeer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "名称不能为空"})
+		return
+	}
 
 	server, err := db.GetFirstServer()
 	if err != nil {
@@ -43,34 +49,23 @@ func CreatePeer(c *gin.Context) {
 		return
 	}
 
-	// 生成密钥
-	privateKey, publicKey, err := wg.GenerateKeyPair()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate keys"})
-		return
-	}
-
-	psk, _ := wg.GeneratePresharedKey()
-
-	// 分配IP：如果指定了IP则使用指定的，否则自动分配
-	ip := req.AllowedIPs
-	if ip == "" {
-		ip, err = db.GetNextAvailableIP(server.ID, server.Address)
-		if err != nil {
-			ip = "10.0.0.2/32"
-		}
-	} else {
-		// 验证IP格式必须带/32
-		if len(ip) < 4 || ip[len(ip)-3:] != "/32" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "IP地址必须以/32结尾，例如：10.0.8.177/32"})
-			return
-		}
-
-		// 验证IP不重复
-		if err := db.CheckIPDuplicate(server.ID, ip); err != nil {
+	if ip := strings.TrimSpace(req.AllowedIPs); ip != "" {
+		if err := wg.ValidateClientIP(server.Address, ip); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+	}
+
+	privateKey, publicKey, err := wg.GenerateKeyPair()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	psk, err := wg.GeneratePresharedKey()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	peer := &model.Peer{
@@ -79,23 +74,36 @@ func CreatePeer(c *gin.Context) {
 		PrivateKey:          privateKey,
 		PublicKey:           publicKey,
 		PresharedKey:        psk,
-		AllowedIPs:          ip,
 		PersistentKeepalive: 25,
 		Enabled:             true,
 	}
 
-	if err := db.CreatePeer(peer); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := db.AllocateAndCreatePeer(server, peer, strings.TrimSpace(req.AllowedIPs)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 更新服务端配置文件
-	peers, _ := db.GetPeersByServer(server.ID)
-	config := wg.GenerateServerConfig(server, peers)
-	wg.SaveServerConfig(server.Name, config)
+	var warning error
+	if err := persistPeers(server); err != nil {
+		warning = err
+	} else if err := wg.ApplyPeerAdd(server, peer); err != nil {
+		warning = err
+	}
 
-	// 动态添加 peer，不需要重启接口
-	wg.AddPeer(server.Name, peer.PublicKey, peer.PresharedKey, peer.AllowedIPs)
-
-	c.JSON(http.StatusOK, peer)
+	payload := gin.H{
+		"id":                   peer.ID,
+		"server_id":            peer.ServerID,
+		"name":                 peer.Name,
+		"public_key":           peer.PublicKey,
+		"allowed_ips":          peer.AllowedIPs,
+		"persistent_keepalive": peer.PersistentKeepalive,
+		"enabled":              peer.Enabled,
+		"has_private_key":      peer.HasPrivateKey,
+		"created_at":           peer.CreatedAt,
+		"updated_at":           peer.UpdatedAt,
+	}
+	if warning != nil {
+		payload["warning"] = warning.Error()
+	}
+	c.JSON(http.StatusOK, payload)
 }

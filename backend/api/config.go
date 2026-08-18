@@ -1,8 +1,8 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
-	"strconv"
 	"wireguard-ui/db"
 	"wireguard-ui/wg"
 
@@ -11,11 +11,18 @@ import (
 )
 
 func GetPeerConfig(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
 
 	peer, err := db.GetPeer(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		return
+	}
+	if peer.PrivateKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该客户端由服务端配置导入，没有私钥，无法生成客户端配置"})
 		return
 	}
 
@@ -26,17 +33,24 @@ func GetPeerConfig(c *gin.Context) {
 	}
 
 	config := wg.GenerateClientConfig(server, peer)
-
-	c.Header("Content-Disposition", "attachment; filename="+peer.Name+".conf")
-	c.Data(http.StatusOK, "text/plain", []byte(config))
+	filename := wg.SanitizeDownloadName(peer.Name) + ".conf"
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(config))
 }
 
 func GetPeerQRCode(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
 
 	peer, err := db.GetPeer(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Peer not found"})
+		return
+	}
+	if peer.PrivateKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该客户端由服务端配置导入，没有私钥，无法生成二维码"})
 		return
 	}
 

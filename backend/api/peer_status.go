@@ -26,9 +26,9 @@ func GetPeersStatus(c *gin.Context) {
 		return
 	}
 
-	handshakes, _ := wg.GetPeerHandshakes(server.Name)
+	handshakes, _ := wg.GetPeerHandshakes(server.Interface)
 
-	result := make([]PeerStatus, 0)
+	result := make([]PeerStatus, 0, len(peers))
 	for _, peer := range peers {
 		online := false
 		if handshakes != nil {

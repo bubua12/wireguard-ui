@@ -1,0 +1,19 @@
+services:
+  wireguard-ui:
+    build: .
+    container_name: wireguard-ui
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - ./data:/data
+      - /etc/wireguard:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    environment:
+      WG_LISTEN: 0.0.0.0:8081
+      WG_DB_PATH: /data/wireguard.db
+      WG_CONFIG_DIR: /etc/wireguard
+      WG_TRUST_PROXY: "false"
+      WG_DEBUG: "false"
+    restart: unless-stopped

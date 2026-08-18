@@ -1,6 +1,5 @@
 <template>
   <div>
-    <!-- Toast 通知 -->
     <Transition name="toast">
       <div v-if="toast.show" class="fixed top-4 right-4 z-50 max-w-sm">
         <div class="rounded-lg shadow-lg p-4 flex items-center space-x-3" :class="toastClass">
@@ -29,11 +28,10 @@
 
     <h1 class="text-2xl font-bold mb-6 dark:text-white">服务器设置</h1>
 
-    <!-- 导入现有配置 -->
     <div v-if="!loading && (isNew || showImportPanel)" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 dark:bg-yellow-900/20 dark:border-yellow-800">
       <h3 class="text-lg font-semibold text-yellow-800 mb-2 dark:text-yellow-200">导入现有配置</h3>
       <p class="text-sm text-yellow-700 mb-4 dark:text-yellow-300">
-        从服务器现有的 WireGuard 配置文件导入。<strong>注意：这会覆盖当前 UI 中的配置！</strong>
+        从 <code>/etc/wireguard/*.conf</code> 导入。这会<strong>覆盖</strong>当前 UI 中的服务器和客户端。导入的客户端没有私钥，无法再下载配置或二维码。
       </p>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div>
@@ -50,8 +48,8 @@
         </div>
       </div>
       <div class="flex space-x-2">
-        <button @click="importConfig" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
-          导入配置
+        <button @click="confirmImport" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
+          导入并覆盖
         </button>
         <button v-if="!isNew" @click="showImportPanel = false" class="btn-secondary">
           取消
@@ -59,7 +57,6 @@
       </div>
     </div>
 
-    <!-- 显示导入按钮（当已有配置且面板隐藏时） -->
     <div v-if="!loading && !isNew && !showImportPanel" class="mb-6">
       <button @click="showImportPanel = true" class="inline-flex items-center px-4 py-2 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50 transition-colors duration-200">
         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,8 +69,13 @@
     <div class="bg-white rounded-lg shadow p-6 dark:bg-gray-800">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">名称</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">显示名称</label>
           <input v-model="form.name" type="text" class="input-field" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">接口名</label>
+          <input v-model="form.interface" type="text" placeholder="wg0" class="input-field" />
+          <p class="text-xs text-gray-500 mt-1">1-15 位，字母开头，对应 /etc/wireguard/&lt;接口名&gt;.conf</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">公网地址</label>
@@ -95,6 +97,16 @@
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">MTU</label>
           <input v-model.number="form.mtu" type="number" class="input-field" />
         </div>
+        <div class="flex items-center space-x-6 md:col-span-2 mt-2">
+          <label class="inline-flex items-center text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="form.full_tunnel" type="checkbox" class="mr-2" />
+            全局流量（客户端 AllowedIPs = 0.0.0.0/0）
+          </label>
+          <label class="inline-flex items-center text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="form.enable_nat" type="checkbox" class="mr-2" />
+            启用 NAT / 转发（写入 PostUp/PostDown）
+          </label>
+        </div>
       </div>
 
       <div class="mt-6 flex space-x-4">
@@ -103,7 +115,6 @@
       </div>
     </div>
 
-    <!-- 修改密码 -->
     <h2 class="text-xl font-bold mt-8 mb-4 dark:text-white">修改密码</h2>
     <div class="bg-white rounded-lg shadow p-6 dark:bg-gray-800">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -113,11 +124,22 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">新密码</label>
-          <input v-model="pwdForm.new_password" type="password" class="input-field" placeholder="至少6位" />
+          <input v-model="pwdForm.new_password" type="password" class="input-field" placeholder="至少8位" />
         </div>
       </div>
       <div class="mt-6">
         <button @click="changePassword" class="btn-primary">修改密码</button>
+      </div>
+    </div>
+
+    <div v-if="confirmModal.show" class="modal-overlay" @click.self="confirmModal.show = false">
+      <div class="modal-content">
+        <h3 class="text-lg font-semibold mb-4 dark:text-white">{{ confirmModal.title }}</h3>
+        <p class="text-gray-600 dark:text-gray-300 mb-6">{{ confirmModal.message }}</p>
+        <div class="flex justify-end space-x-2">
+          <button @click="confirmModal.show = false" class="btn-secondary">取消</button>
+          <button @click="confirmModal.onConfirm" class="btn-danger">确认覆盖</button>
+        </div>
       </div>
     </div>
   </div>
@@ -152,23 +174,30 @@ const showToast = (type, message, duration = 3000) => {
   }
 }
 
-const form = ref({
+const emptyForm = () => ({
   name: '',
+  interface: 'wg0',
   endpoint: '',
   address: '',
   listen_port: 51820,
   dns: '8.8.8.8',
-  mtu: 1420
+  mtu: 1420,
+  full_tunnel: false,
+  enable_nat: false
 })
 
+const form = ref(emptyForm())
 const isNew = ref(true)
 const showImportPanel = ref(false)
 const loading = ref(true)
+const confirmModal = ref({ show: false, title: '', message: '', onConfirm: () => {} })
 
 const importForm = ref({
   config_path: '/etc/wireguard/wg0.conf',
   endpoint: '',
-  dns: '8.8.8.8'
+  dns: '8.8.8.8',
+  full_tunnel: false,
+  enable_nat: false
 })
 
 const pwdForm = ref({
@@ -176,10 +205,19 @@ const pwdForm = ref({
   new_password: ''
 })
 
+const applyServer = (data) => {
+  form.value = {
+    ...emptyForm(),
+    ...data,
+    full_tunnel: !!data.full_tunnel,
+    enable_nat: !!data.enable_nat
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await axios.get('/api/server')
-    form.value = res.data
+    applyServer(res.data)
     isNew.value = false
   } catch (e) {
     // Server not configured yet
@@ -191,12 +229,14 @@ onMounted(async () => {
 const save = async () => {
   try {
     if (isNew.value) {
-      await axios.post('/api/server', form.value)
+      const res = await axios.post('/api/server', form.value)
+      applyServer(res.data)
+      isNew.value = false
     } else {
-      await axios.put('/api/server', form.value)
+      const res = await axios.put('/api/server', form.value)
+      applyServer(res.data)
     }
-    showToast('success', '保存成功！')
-    setTimeout(() => { location.reload() }, 1500)
+    showToast('success', '已保存到数据库。修改接口/地址/NAT 后请再点「同步到系统」。')
   } catch (e) {
     showToast('error', e.response?.data?.error || '保存失败')
   }
@@ -216,8 +256,8 @@ const changePassword = async () => {
     showToast('warning', '请填写完整')
     return
   }
-  if (pwdForm.value.new_password.length < 6) {
-    showToast('warning', '新密码至少6位')
+  if (pwdForm.value.new_password.length < 8) {
+    showToast('warning', '新密码至少8位')
     return
   }
   try {
@@ -229,17 +269,26 @@ const changePassword = async () => {
   }
 }
 
-const importConfig = async () => {
+const confirmImport = () => {
   if (!importForm.value.endpoint) {
     showToast('warning', '请填写公网地址')
     return
   }
+  confirmModal.value = {
+    show: true,
+    title: '覆盖导入',
+    message: '导入会删除当前 UI 中的服务器和全部客户端，然后写入配置文件中的内容。确定继续？',
+    onConfirm: importConfig
+  }
+}
+
+const importConfig = async () => {
+  confirmModal.value.show = false
   try {
     const res = await axios.post('/api/import', importForm.value)
-    showToast('success', res.data.message)
-    // 重新加载服务器配置
+    showToast('success', res.data.message, 5000)
     const serverRes = await axios.get('/api/server')
-    form.value = serverRes.data
+    applyServer(serverRes.data)
     isNew.value = false
     showImportPanel.value = false
   } catch (e) {

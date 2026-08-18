@@ -9,11 +9,14 @@ import (
 
 type UpdateServerReq struct {
 	Name       string `json:"name"`
+	Interface  string `json:"interface"`
 	Address    string `json:"address"`
 	ListenPort int    `json:"listen_port"`
 	Endpoint   string `json:"endpoint"`
 	DNS        string `json:"dns"`
 	MTU        int    `json:"mtu"`
+	FullTunnel *bool  `json:"full_tunnel"`
+	EnableNAT  *bool  `json:"enable_nat"`
 }
 
 func UpdateServer(c *gin.Context) {
@@ -32,6 +35,9 @@ func UpdateServer(c *gin.Context) {
 	if req.Name != "" {
 		server.Name = req.Name
 	}
+	if req.Interface != "" {
+		server.Interface = req.Interface
+	}
 	if req.Address != "" {
 		server.Address = req.Address
 	}
@@ -46,6 +52,17 @@ func UpdateServer(c *gin.Context) {
 	}
 	if req.MTU > 0 {
 		server.MTU = req.MTU
+	}
+	if req.FullTunnel != nil {
+		server.FullTunnel = *req.FullTunnel
+	}
+	if req.EnableNAT != nil {
+		server.EnableNAT = *req.EnableNAT
+	}
+
+	if err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.ListenPort, server.MTU); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	if err := db.UpdateServer(server); err != nil {
