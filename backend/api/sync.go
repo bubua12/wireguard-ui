@@ -30,7 +30,7 @@ func SyncConfig(c *gin.Context) {
 		return
 	}
 
-	if err := wg.SyncConfig(server.Interface); err != nil {
+	if err := wg.SyncConfig(server.Interface, server.Address); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

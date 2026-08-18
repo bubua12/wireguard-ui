@@ -26,7 +26,20 @@
       </div>
     </Transition>
 
-    <h1 class="text-2xl font-bold mb-6 dark:text-white">服务器设置</h1>
+    <h1 class="text-2xl font-bold mb-4 dark:text-white">服务器设置</h1>
+    <div class="flex items-center justify-end gap-2 mb-4">
+      <button
+        v-if="!loading && !isNew && !showImportPanel"
+        @click="showImportPanel = true"
+        class="inline-flex items-center px-3 py-2 text-sm bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50 transition-colors duration-200"
+      >
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        从系统配置文件导入
+      </button>
+      <button @click="openPwdModal" class="btn-secondary text-sm">修改密码</button>
+    </div>
 
     <div v-if="!loading && (isNew || showImportPanel)" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 dark:bg-yellow-900/20 dark:border-yellow-800">
       <h3 class="text-lg font-semibold text-yellow-800 mb-2 dark:text-yellow-200">导入现有配置</h3>
@@ -40,7 +53,7 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-yellow-700 mb-1 dark:text-yellow-300">公网地址 (必填)</label>
-          <input v-model="importForm.endpoint" type="text" placeholder="your-server.com:51820" class="input-field" />
+          <SecretField v-model="importForm.endpoint" placeholder="your-server.com:51820" />
         </div>
         <div>
           <label class="block text-sm font-medium text-yellow-700 mb-1 dark:text-yellow-300">DNS</label>
@@ -57,15 +70,6 @@
       </div>
     </div>
 
-    <div v-if="!loading && !isNew && !showImportPanel" class="mb-6">
-      <button @click="showImportPanel = true" class="inline-flex items-center px-4 py-2 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50 transition-colors duration-200">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-        </svg>
-        从系统配置文件导入
-      </button>
-    </div>
-
     <div class="bg-white rounded-lg shadow p-6 dark:bg-gray-800">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -75,15 +79,15 @@
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">接口名</label>
           <input v-model="form.interface" type="text" placeholder="wg0" class="input-field" />
-          <p class="text-xs text-gray-500 mt-1">1-15 位，字母开头，对应 /etc/wireguard/&lt;接口名&gt;.conf</p>
+          <p class="text-xs text-gray-500 mt-1">系统网卡名，一般是 wg0，不要填显示名称或域名</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">公网地址</label>
-          <input v-model="form.endpoint" type="text" placeholder="example.com:51820" class="input-field" />
+          <SecretField v-model="form.endpoint" placeholder="example.com:51820" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">内网地址</label>
-          <input v-model="form.address" type="text" placeholder="10.0.0.1/24" class="input-field" />
+          <SecretField v-model="form.address" placeholder="10.0.0.1/24" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">监听端口</label>
@@ -97,14 +101,20 @@
           <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">MTU</label>
           <input v-model.number="form.mtu" type="number" class="input-field" />
         </div>
-        <div class="flex items-center space-x-6 md:col-span-2 mt-2">
-          <label class="inline-flex items-center text-sm text-gray-700 dark:text-gray-300">
-            <input v-model="form.full_tunnel" type="checkbox" class="mr-2" />
-            全局流量（客户端 AllowedIPs = 0.0.0.0/0）
+        <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+          <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+            <input v-model="form.full_tunnel" type="checkbox" class="mt-1" />
+            <span>
+              <span class="block font-medium">全局流量</span>
+              <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">客户端全部上网走隧道（AllowedIPs = 0.0.0.0/0）</span>
+            </span>
           </label>
-          <label class="inline-flex items-center text-sm text-gray-700 dark:text-gray-300">
-            <input v-model="form.enable_nat" type="checkbox" class="mr-2" />
-            启用 NAT / 转发（写入 PostUp/PostDown）
+          <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+            <input v-model="form.enable_nat" type="checkbox" class="mt-1" />
+            <span>
+              <span class="block font-medium">启用 NAT / 转发</span>
+              <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">写入 iptables PostUp/PostDown，让客户端能出网</span>
+            </span>
           </label>
         </div>
       </div>
@@ -115,20 +125,27 @@
       </div>
     </div>
 
-    <h2 class="text-xl font-bold mt-8 mb-4 dark:text-white">修改密码</h2>
-    <div class="bg-white rounded-lg shadow p-6 dark:bg-gray-800">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">原密码</label>
-          <input v-model="pwdForm.old_password" type="password" class="input-field" />
+    <div v-if="showPwdModal" class="modal-overlay" @click.self="closePwdModal">
+      <div class="modal-content">
+        <h3 class="text-lg font-semibold mb-4 dark:text-white">修改密码</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">原密码</label>
+            <SecretField v-model="pwdForm.old_password" as-password />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">新密码</label>
+            <SecretField v-model="pwdForm.new_password" as-password placeholder="至少8位" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">确认新密码</label>
+            <SecretField v-model="pwdForm.confirm_password" as-password placeholder="再输入一次" />
+          </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">新密码</label>
-          <input v-model="pwdForm.new_password" type="password" class="input-field" placeholder="至少8位" />
+        <div class="flex justify-end space-x-2 mt-6">
+          <button @click="closePwdModal" class="btn-secondary">取消</button>
+          <button @click="changePassword" class="btn-primary">确认修改</button>
         </div>
-      </div>
-      <div class="mt-6">
-        <button @click="changePassword" class="btn-primary">修改密码</button>
       </div>
     </div>
 
@@ -148,6 +165,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import SecretField from '../components/SecretField.vue'
 
 const toast = ref({
   show: false,
@@ -186,10 +204,17 @@ const emptyForm = () => ({
   enable_nat: false
 })
 
+const emptyPwd = () => ({
+  old_password: '',
+  new_password: '',
+  confirm_password: ''
+})
+
 const form = ref(emptyForm())
 const isNew = ref(true)
 const showImportPanel = ref(false)
 const loading = ref(true)
+const showPwdModal = ref(false)
 const confirmModal = ref({ show: false, title: '', message: '', onConfirm: () => {} })
 
 const importForm = ref({
@@ -200,10 +225,7 @@ const importForm = ref({
   enable_nat: false
 })
 
-const pwdForm = ref({
-  old_password: '',
-  new_password: ''
-})
+const pwdForm = ref(emptyPwd())
 
 const applyServer = (data) => {
   form.value = {
@@ -251,8 +273,18 @@ const sync = async () => {
   }
 }
 
+const openPwdModal = () => {
+  pwdForm.value = emptyPwd()
+  showPwdModal.value = true
+}
+
+const closePwdModal = () => {
+  showPwdModal.value = false
+  pwdForm.value = emptyPwd()
+}
+
 const changePassword = async () => {
-  if (!pwdForm.value.old_password || !pwdForm.value.new_password) {
+  if (!pwdForm.value.old_password || !pwdForm.value.new_password || !pwdForm.value.confirm_password) {
     showToast('warning', '请填写完整')
     return
   }
@@ -260,10 +292,17 @@ const changePassword = async () => {
     showToast('warning', '新密码至少8位')
     return
   }
+  if (pwdForm.value.new_password !== pwdForm.value.confirm_password) {
+    showToast('warning', '两次输入的新密码不一致')
+    return
+  }
   try {
-    await axios.post('/api/change-password', pwdForm.value)
+    await axios.post('/api/change-password', {
+      old_password: pwdForm.value.old_password,
+      new_password: pwdForm.value.new_password
+    })
     showToast('success', '密码修改成功')
-    pwdForm.value = { old_password: '', new_password: '' }
+    closePwdModal()
   } catch (e) {
     showToast('error', e.response?.data?.error || '修改失败')
   }

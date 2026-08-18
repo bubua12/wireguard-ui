@@ -8,9 +8,8 @@
       </div>
     </Transition>
 
-    <h1 class="text-2xl font-bold mb-6 dark:text-white">客户端管理</h1>
-
-    <div class="flex justify-end mb-4">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold dark:text-white">客户端管理</h1>
       <button @click="showAddModal = true" class="btn-primary">添加客户端</button>
     </div>
 
@@ -43,12 +42,16 @@
           <tr v-if="sortedPeers.length === 0">
             <td colspan="4" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">暂无客户端，点击右上角添加</td>
           </tr>
-          <tr v-for="peer in sortedPeers" :key="peer.id">
+          <tr v-for="peer in pagedPeers" :key="peer.id">
             <td class="px-6 py-4 whitespace-nowrap dark:text-white">
               <div class="flex items-center">
                 <span class="status-dot" :class="isOnline(peer.public_key) ? 'status-online' : 'status-offline'"></span>
                 {{ peer.name }}
-                <span v-if="!peer.has_private_key" class="ml-2 text-xs text-yellow-600 dark:text-yellow-400">导入</span>
+                <span
+                  v-if="!peer.has_private_key"
+                  class="badge-import ml-2"
+                  title="从系统配置导入，没有私钥，无法下载或扫码"
+                >导入</span>
               </div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
@@ -92,6 +95,32 @@
           </tr>
         </tbody>
       </table>
+
+      <div v-if="sortedPeers.length > 0" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+        <div class="text-sm text-gray-500 dark:text-gray-400">
+          共 {{ sortedPeers.length }} 条，第 {{ page }} / {{ totalPages }} 页
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <select v-model.number="pageSize" class="h-8 px-2 text-sm rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+            <option :value="10">10 条/页</option>
+            <option :value="20">20 条/页</option>
+            <option :value="50">50 条/页</option>
+          </select>
+          <button type="button" class="pager-btn" :disabled="page <= 1" @click="page = 1">«</button>
+          <button type="button" class="pager-btn" :disabled="page <= 1" @click="page -= 1">‹</button>
+          <button
+            v-for="item in pageItems"
+            :key="item.key"
+            type="button"
+            class="pager-btn"
+            :class="{ 'pager-btn-active': item.current }"
+            :disabled="item.ellipsis"
+            @click="!item.ellipsis && (page = item.num)"
+          >{{ item.label }}</button>
+          <button type="button" class="pager-btn" :disabled="page >= totalPages" @click="page += 1">›</button>
+          <button type="button" class="pager-btn" :disabled="page >= totalPages" @click="page = totalPages">»</button>
+        </div>
+      </div>
     </div>
 
     <div v-if="showAddModal" class="modal-overlay">
@@ -152,7 +181,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import SortCarets from '../components/SortCarets.vue'
 
@@ -161,6 +190,8 @@ const peerStatus = ref({})
 const statusTimer = ref(null)
 const sortKey = ref('')
 const sortOrder = ref('asc')
+const page = ref(1)
+const pageSize = ref(10)
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -257,6 +288,40 @@ const sortedPeers = computed(() => {
   })
 })
 
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedPeers.value.length / pageSize.value)))
+
+const pagedPeers = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return sortedPeers.value.slice(start, start + pageSize.value)
+})
+
+const pageItems = computed(() => {
+  const total = totalPages.value
+  const current = page.value
+  const nums = new Set([1, total, current - 1, current, current + 1])
+  const list = [...nums].filter(n => n >= 1 && n <= total).sort((a, b) => a - b)
+  const items = []
+  let prev = 0
+  for (const n of list) {
+    if (prev && n - prev > 1) {
+      items.push({ key: `e-${n}`, ellipsis: true, label: '…' })
+    }
+    items.push({ key: `p-${n}`, num: n, label: String(n), current: n === current })
+    prev = n
+  }
+  return items
+})
+
+watch([sortedPeers, pageSize], () => {
+  if (page.value > totalPages.value) {
+    page.value = totalPages.value
+  }
+})
+
+watch([sortKey, sortOrder], () => {
+  page.value = 1
+})
+
 const addPeer = async () => {
   if (!newPeerName.value) return
   addError.value = ''
@@ -268,7 +333,12 @@ const addPeer = async () => {
     const res = await axios.post('/api/peers', data)
     noteWarning(res.data)
     closeAddModal()
-    loadPeers()
+    await loadPeers()
+    if (!sortKey.value) {
+      page.value = Math.max(1, Math.ceil(peers.value.length / pageSize.value))
+    } else {
+      page.value = 1
+    }
   } catch (e) {
     addError.value = e.response?.data?.error || '添加失败'
   }

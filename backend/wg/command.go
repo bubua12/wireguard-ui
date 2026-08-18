@@ -2,6 +2,7 @@ package wg
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -87,18 +88,99 @@ func InterfaceDown(name string) error {
 	return err
 }
 
-// SyncConfig writes are assumed done. If the interface is down, bring it up;
-// otherwise apply the file with syncconf so existing sessions stay up.
-func SyncConfig(name string) error {
-	path, err := ConfigPath(name)
-	if err != nil {
+// SyncConfig assumes the full wg-quick config is already on disk.
+// If the interface is down, bring it up with wg-quick. If it is already
+// running, strip wg-quick-only keys (Address, MTU, PostUp, ...) and apply
+// the remainder with `wg syncconf` so existing sessions stay up.
+// address is the server CIDR (e.g. 10.0.8.1/24) used to refuse creating a
+// second interface that would collide with an existing one.
+func SyncConfig(name, address string) error {
+	if err := ValidateInterfaceName(name); err != nil {
 		return err
 	}
 	if !InterfaceExists(name) {
+		if owner, ok := interfaceHoldingAddress(address); ok && owner != name {
+			return fmt.Errorf("内网地址 %s 已在接口 %s 上，但当前接口名是 %q（系统里没有这个网卡）。请把「接口名」改回 %s 后再同步；显示名称不要填到接口名里", hostIP(address), owner, name, owner)
+		}
 		return InterfaceUp(name)
 	}
-	_, err = runWG("wg", "syncconf", name, path)
+
+	stripped, err := stripQuickConfig(name)
+	if err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp("", "wg-sync-"+name+"-*.conf")
+	if err != nil {
+		return fmt.Errorf("创建临时配置失败: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(stripped); err != nil {
+		tmp.Close()
+		return fmt.Errorf("写入临时配置失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	_, err = runWG("wg", "syncconf", name, tmpName)
 	return err
+}
+
+func hostIP(cidr string) string {
+	ip, _, err := net.ParseCIDR(strings.TrimSpace(cidr))
+	if err != nil {
+		return strings.TrimSpace(cidr)
+	}
+	return ip.String()
+}
+
+func interfaceHoldingAddress(cidr string) (string, bool) {
+	want := net.ParseIP(hostIP(cidr))
+	if want == nil {
+		return "", false
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", false
+	}
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok || ipnet.IP == nil {
+				continue
+			}
+			if ipnet.IP.Equal(want) {
+				return iface.Name, true
+			}
+		}
+	}
+	return "", false
+}
+
+func stripQuickConfig(name string) ([]byte, error) {
+	cmd := exec.Command("wg-quick", "strip", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			return nil, fmt.Errorf("wg-quick strip %s: %w", name, err)
+		}
+		return nil, fmt.Errorf("wg-quick strip %s: %s", name, msg)
+	}
+	return out, nil
 }
 
 func AddPeer(interfaceName, publicKey, presharedKey, allowedIPs string) error {

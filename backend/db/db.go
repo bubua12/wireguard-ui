@@ -100,16 +100,6 @@ func migrate() error {
 		}
 	}
 
-	// Preserve old behavior: the display name was used as the interface name.
-	if _, err := DB.Exec(`
-		UPDATE servers
-		SET interface = name
-		WHERE (interface IS NULL OR interface = '' OR interface = 'wg0')
-		  AND name != '' AND name != 'wg0'
-	`); err != nil {
-		return err
-	}
-
 	rows, err := DB.Query(`SELECT id, interface FROM servers`)
 	if err != nil {
 		return err

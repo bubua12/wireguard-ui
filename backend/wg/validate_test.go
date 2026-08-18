@@ -13,7 +13,7 @@ func TestValidateInterfaceName(t *testing.T) {
 			t.Fatalf("%s should be valid: %v", n, err)
 		}
 	}
-	bad := []string{"", "My VPN Server", "../etc", "1wg", "thisnameiswaytoolong"}
+	bad := []string{"", "My VPN Server", "../etc", "1wg", "thisnameiswaytoolong", "bubua12.com"}
 	for _, n := range bad {
 		if err := ValidateInterfaceName(n); err == nil {
 			t.Fatalf("%q should be invalid", n)

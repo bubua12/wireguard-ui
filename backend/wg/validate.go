@@ -25,7 +25,22 @@ func ValidateInterfaceName(name string) error {
 	if strings.Contains(name, "..") {
 		return fmt.Errorf("接口名无效")
 	}
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		suffix := name[i+1:]
+		if len(suffix) >= 2 && isAlpha(suffix) {
+			return fmt.Errorf("接口名不能是域名（%s），请填写系统网卡名，一般是 wg0", name)
+		}
+	}
 	return nil
+}
+
+func isAlpha(s string) bool {
+	for _, r := range s {
+		if r < 'A' || (r > 'Z' && r < 'a') || r > 'z' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func SanitizeDownloadName(name string) string {
