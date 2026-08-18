@@ -35,15 +35,18 @@
 
 ## 🛠️ 功能展示
 客户端管理
-<img width="1436" height="695" alt="客户端管理" src="https://github.com/user-attachments/assets/f9aa4669-3419-49aa-8fee-e758fc561e39" />
+<img width="1396" height="914" alt="image" src="https://github.com/user-attachments/assets/e025b8a8-ef44-40f7-9d75-3e2390777860" />
+
 
 
 仪表盘
-<img width="1376" height="601" alt="仪表盘" src="https://github.com/user-attachments/assets/2bba0c78-1de9-4a0b-a72e-f2ffcd55178c" />
+<img width="1430" height="540" alt="image" src="https://github.com/user-attachments/assets/5ea2fc78-73c8-4438-8b34-cf1722d83715" />
+
 
 
 设置
-<img width="1387" height="842" alt="设置" src="https://github.com/user-attachments/assets/c5f577a9-1c85-4222-9fe0-9086ddbf9e44" />
+<img width="1357" height="711" alt="image" src="https://github.com/user-attachments/assets/1a8ac01d-4c19-477c-b75d-f322175cd7fa" />
+
 
 
 
