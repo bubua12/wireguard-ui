@@ -235,23 +235,49 @@ func GetPeerHandshakes(interfaceName string) (map[string]int64, error) {
 	return result, nil
 }
 
-func GetPeerTransfers(interfaceName string) (rx, tx int64, err error) {
+// Transfer is a peer's rx/tx byte counters from `wg show transfer`.
+type Transfer struct {
+	Rx int64
+	Tx int64
+}
+
+func GetPeerTransferMap(interfaceName string) (map[string]Transfer, error) {
 	if err := ValidateInterfaceName(interfaceName); err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 	output, err := runWG("wg", "show", interfaceName, "transfer")
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	return parseTransferOutput(string(output)), nil
+}
+
+func parseTransferOutput(output string) map[string]Transfer {
+	result := make(map[string]Transfer)
+	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		parts := strings.Fields(scanner.Text())
-		if len(parts) >= 3 {
-			r, _ := strconv.ParseInt(parts[1], 10, 64)
-			t, _ := strconv.ParseInt(parts[2], 10, 64)
-			rx += r
-			tx += t
+		if len(parts) < 3 {
+			continue
 		}
+		rx, err1 := strconv.ParseInt(parts[1], 10, 64)
+		tx, err2 := strconv.ParseInt(parts[2], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		result[parts[0]] = Transfer{Rx: rx, Tx: tx}
+	}
+	return result
+}
+
+func GetPeerTransfers(interfaceName string) (rx, tx int64, err error) {
+	m, err := GetPeerTransferMap(interfaceName)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, v := range m {
+		rx += v.Rx
+		tx += v.Tx
 	}
 	return rx, tx, nil
 }

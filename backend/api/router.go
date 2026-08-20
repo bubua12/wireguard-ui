@@ -68,6 +68,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 
 		api.GET("/peers/:id/config", GetPeerConfig)
 		api.GET("/peers/:id/qrcode", GetPeerQRCode)
+		api.GET("/peers/:id/traffic", GetPeerTraffic)
 
 		api.POST("/sync", SyncConfig)
 		api.POST("/import", ImportConfig)

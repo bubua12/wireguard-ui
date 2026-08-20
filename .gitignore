@@ -21,6 +21,8 @@ target/
 .settings
 
 wireguard-ui
+wireguard-ui-v*
+wireguard-ui-linux-*
 bin/
 *.db
 *.db-wal

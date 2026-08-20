@@ -8,12 +8,26 @@
       </div>
     </Transition>
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
       <h1 class="text-2xl font-bold dark:text-white">客户端管理</h1>
-      <button @click="showAddModal = true" class="btn-primary">添加客户端</button>
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <div class="relative flex-1 sm:flex-none">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input
+            v-model="search"
+            type="search"
+            placeholder="搜索名称或 IP"
+            class="input-field input-field-icon w-full sm:w-56"
+          />
+        </div>
+        <button @click="showAddModal = true" class="btn-primary whitespace-nowrap">添加客户端</button>
+      </div>
     </div>
 
     <div class="bg-white rounded-lg shadow overflow-hidden dark:bg-gray-800">
+      <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
@@ -35,12 +49,20 @@
                 <SortCarets :active="sortKey === 'status'" :order="sortOrder" />
               </button>
             </th>
+            <th class="px-6 py-3 text-left">
+              <button type="button" class="sort-btn" @click="toggleSort('traffic')">
+                流量 ↓ / ↑
+                <SortCarets :active="sortKey === 'traffic'" :order="sortOrder" />
+              </button>
+            </th>
             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-300">操作</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
           <tr v-if="sortedPeers.length === 0">
-            <td colspan="4" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">暂无客户端，点击右上角添加</td>
+            <td colspan="5" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
+              {{ emptyMessage }}
+            </td>
           </tr>
           <tr v-for="peer in pagedPeers" :key="peer.id">
             <td class="px-6 py-4 whitespace-nowrap dark:text-white">
@@ -59,6 +81,16 @@
               <span :class="peer.enabled ? 'badge-green' : 'badge-gray'">
                 {{ peer.enabled ? '已启用' : '已禁用' }}
               </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <button
+                type="button"
+                class="text-left text-sm tabular-nums text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
+                title="累计流量，点击查看按天明细"
+                @click="openTraffic(peer)"
+              >
+                {{ formatBytes(peerRx(peer)) }} / {{ formatBytes(peerTx(peer)) }}
+              </button>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
               <div class="flex justify-end space-x-1">
@@ -95,6 +127,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div v-if="sortedPeers.length > 0" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
         <div class="text-sm text-gray-500 dark:text-gray-400">
@@ -147,6 +180,41 @@
       </div>
     </div>
 
+    <div v-if="trafficPeer" class="modal-overlay" @click.self="closeTraffic">
+      <div class="modal-content-lg max-h-[80vh] overflow-y-auto">
+        <h3 class="text-lg font-semibold mb-1 dark:text-white">{{ trafficPeer.name }} 流量明细</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">
+          累计 ↓ {{ formatBytes(trafficReport.rx) }} / ↑ {{ formatBytes(trafficReport.tx) }}
+        </p>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">按天统计由后台采样累计，接口重启后不会丢失。</p>
+        <div v-if="trafficLoading" class="py-8 text-center text-gray-500">加载中...</div>
+        <div v-else-if="trafficReport.days.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
+          暂无按天数据，有流量后会自动记录。
+        </div>
+        <table v-else class="min-w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <th class="py-2 pr-4">日期</th>
+              <th class="py-2 pr-4 text-right">下行</th>
+              <th class="py-2 pr-4 text-right">上行</th>
+              <th class="py-2 text-right">合计</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <tr v-for="row in trafficReport.days" :key="row.day" class="dark:text-gray-200">
+              <td class="py-2 pr-4 whitespace-nowrap">{{ row.day }}</td>
+              <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.rx) }}</td>
+              <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.tx) }}</td>
+              <td class="py-2 text-right tabular-nums">{{ formatBytes((Number(row.rx) || 0) + (Number(row.tx) || 0)) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="flex justify-end mt-4">
+          <button @click="closeTraffic" class="btn-secondary">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="editingPeer" class="modal-overlay">
       <div class="modal-content">
         <h3 class="text-lg font-semibold mb-4 dark:text-white">编辑客户端</h3>
@@ -188,10 +256,14 @@ import SortCarets from '../components/SortCarets.vue'
 const peers = ref([])
 const peerStatus = ref({})
 const statusTimer = ref(null)
+const search = ref('')
 const sortKey = ref('')
 const sortOrder = ref('asc')
 const page = ref(1)
 const pageSize = ref(10)
+const trafficPeer = ref(null)
+const trafficLoading = ref(false)
+const trafficReport = ref({ rx: 0, tx: 0, days: [] })
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -235,7 +307,11 @@ const loadStatus = async () => {
     const res = await axios.get('/api/peers/status')
     const statusMap = {}
     for (const item of res.data || []) {
-      statusMap[item.public_key] = item.online
+      statusMap[item.public_key] = {
+        online: !!item.online,
+        rx: Number(item.rx) || 0,
+        tx: Number(item.tx) || 0
+      }
     }
     peerStatus.value = statusMap
   } catch (e) {
@@ -244,7 +320,18 @@ const loadStatus = async () => {
 }
 
 const isOnline = (publicKey) => {
-  return peerStatus.value[publicKey] || false
+  return peerStatus.value[publicKey]?.online || false
+}
+
+const peerRx = (peer) => peerStatus.value[peer.public_key]?.rx || 0
+const peerTx = (peer) => peerStatus.value[peer.public_key]?.tx || 0
+
+const formatBytes = (n) => {
+  const v = Number(n) || 0
+  if (v < 1024) return v + ' B'
+  if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB'
+  if (v < 1024 * 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB'
+  return (v / 1024 / 1024 / 1024).toFixed(2) + ' GB'
 }
 
 const toggleSort = (key) => {
@@ -268,9 +355,24 @@ const ipToNum = (cidr) => {
   return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]
 }
 
+const filteredPeers = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return peers.value
+  return peers.value.filter((p) => {
+    const name = (p.name || '').toLowerCase()
+    const ip = (p.allowed_ips || '').toLowerCase()
+    return name.includes(q) || ip.includes(q)
+  })
+})
+
+const emptyMessage = computed(() => {
+  if (peers.value.length === 0) return '暂无客户端，点击右上角添加'
+  return '没有匹配的客户端'
+})
+
 const sortedPeers = computed(() => {
-  if (!sortKey.value) return peers.value
-  const list = [...peers.value]
+  const list = [...filteredPeers.value]
+  if (!sortKey.value) return list
   const dir = sortOrder.value === 'asc' ? 1 : -1
   return list.sort((a, b) => {
     if (sortKey.value === 'name') {
@@ -283,6 +385,9 @@ const sortedPeers = computed(() => {
       const va = a.enabled ? 1 : 0
       const vb = b.enabled ? 1 : 0
       return (va - vb) * dir
+    }
+    if (sortKey.value === 'traffic') {
+      return ((peerRx(a) + peerTx(a)) - (peerTx(b) + peerRx(b))) * dir
     }
     return 0
   })
@@ -318,7 +423,7 @@ watch([sortedPeers, pageSize], () => {
   }
 })
 
-watch([sortKey, sortOrder], () => {
+watch([sortKey, sortOrder, search], () => {
   page.value = 1
 })
 
@@ -431,6 +536,35 @@ const downloadConfig = async (peer) => {
   }
 }
 
+const closeTraffic = () => {
+  trafficPeer.value = null
+  trafficReport.value = { rx: 0, tx: 0, days: [] }
+  trafficLoading.value = false
+}
+
+const openTraffic = async (peer) => {
+  trafficPeer.value = peer
+  trafficLoading.value = true
+  trafficReport.value = { rx: 0, tx: 0, days: [] }
+  try {
+    const res = await axios.get(`/api/peers/${peer.id}/traffic`)
+    if (trafficPeer.value?.id !== peer.id) return
+    trafficReport.value = {
+      rx: Number(res.data?.rx) || 0,
+      tx: Number(res.data?.tx) || 0,
+      days: res.data?.days || []
+    }
+  } catch (e) {
+    if (trafficPeer.value?.id !== peer.id) return
+    showToast(e.response?.data?.error || '获取流量失败')
+    closeTraffic()
+  } finally {
+    if (trafficPeer.value?.id === peer.id) {
+      trafficLoading.value = false
+    }
+  }
+}
+
 const closeQR = () => {
   qrPeer.value = null
   if (qrCodeUrl.value) {
@@ -465,5 +599,6 @@ onUnmounted(() => {
     clearInterval(statusTimer.value)
   }
   closeQR()
+  closeTraffic()
 })
 </script>

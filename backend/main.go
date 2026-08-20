@@ -5,6 +5,7 @@ import (
 	"wireguard-ui/api"
 	"wireguard-ui/config"
 	"wireguard-ui/db"
+	"wireguard-ui/stats"
 	"wireguard-ui/wg"
 )
 
@@ -19,6 +20,8 @@ func main() {
 	if err := db.Init(cfg.DBPath); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
+
+	stats.Start()
 
 	r := api.SetupRouter(cfg)
 	log.Printf("WireGuard UI listening on %s (db=%s)", cfg.Listen, cfg.DBPath)

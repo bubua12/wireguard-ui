@@ -80,6 +80,21 @@ func createTables() error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (server_id) REFERENCES servers(id)
 	);
+
+	CREATE TABLE IF NOT EXISTS peer_transfer_cursor (
+		public_key TEXT PRIMARY KEY,
+		rx INTEGER NOT NULL DEFAULT 0,
+		tx INTEGER NOT NULL DEFAULT 0,
+		sampled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS peer_transfer_daily (
+		public_key TEXT NOT NULL,
+		day TEXT NOT NULL,
+		rx INTEGER NOT NULL DEFAULT 0,
+		tx INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (public_key, day)
+	);
 	`
 	_, err := DB.Exec(schema)
 	return err
@@ -124,6 +139,7 @@ func migrate() error {
 	indexes := []string{
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_peers_server_allowed_ips ON peers(server_id, allowed_ips)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_peers_server_public_key ON peers(server_id, public_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_peer_transfer_daily_day ON peer_transfer_daily(day)`,
 	}
 	for _, q := range indexes {
 		if _, err := DB.Exec(q); err != nil {

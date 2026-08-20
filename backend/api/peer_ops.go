@@ -70,6 +70,7 @@ func DeletePeer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	_ = db.DeletePeerTransfer(peer.PublicKey)
 
 	var warning error
 	if err := persistPeers(server); err != nil {

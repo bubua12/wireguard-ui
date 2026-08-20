@@ -11,6 +11,8 @@ import (
 type PeerStatus struct {
 	PublicKey string `json:"public_key"`
 	Online    bool   `json:"online"`
+	Rx        int64  `json:"rx"`
+	Tx        int64  `json:"tx"`
 }
 
 func GetPeersStatus(c *gin.Context) {
@@ -27,6 +29,20 @@ func GetPeersStatus(c *gin.Context) {
 	}
 
 	handshakes, _ := wg.GetPeerHandshakes(server.Interface)
+	live, _ := wg.GetPeerTransferMap(server.Interface)
+	if live == nil {
+		live = map[string]wg.Transfer{}
+	}
+
+	keys := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		keys = append(keys, peer.PublicKey)
+	}
+	usage, err := db.UsageForKeys(keys, live)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	result := make([]PeerStatus, 0, len(peers))
 	for _, peer := range peers {
@@ -36,9 +52,12 @@ func GetPeersStatus(c *gin.Context) {
 				online = wg.IsPeerOnline(ts)
 			}
 		}
+		u := usage[peer.PublicKey]
 		result = append(result, PeerStatus{
 			PublicKey: peer.PublicKey,
 			Online:    online,
+			Rx:        u.Rx,
+			Tx:        u.Tx,
 		})
 	}
 
