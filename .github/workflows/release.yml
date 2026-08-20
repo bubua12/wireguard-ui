@@ -16,6 +16,7 @@ jobs:
         with:
           # 浅克隆拿不到 annotated tag 对象，附注会空，Release 正文会退化成 commit message
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -59,14 +60,17 @@ jobs:
       - name: Extract release notes from tag
         id: release_notes
         run: |
-          TAG_MSG=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
-          if [ -z "$(echo "$TAG_MSG" | tr -d '[:space:]')" ]; then
+          git fetch origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" --force
+          TAG_MSG=$(git for-each-ref --format='%(contents)' "refs/tags/${GITHUB_REF_NAME}")
+          TAG_MSG=$(printf '%s\n' "$TAG_MSG" | sed '/^-----BEGIN PGP SIGNATURE-----$/,$d')
+          if [ -z "$(printf '%s' "$TAG_MSG" | tr -d '[:space:]')" ]; then
+            echo "annotated tag message empty, falling back to commit message" >&2
             TAG_MSG=$(git log -1 --format='%B' "${GITHUB_REF_NAME}")
           fi
           {
-            echo "body<<EOF"
-            echo "$TAG_MSG"
-            echo "EOF"
+            echo "body<<RELEASE_NOTES_EOF"
+            printf '%s\n' "$TAG_MSG"
+            echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create Release
