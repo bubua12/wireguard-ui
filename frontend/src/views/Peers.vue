@@ -181,7 +181,7 @@
     </div>
 
     <div v-if="trafficPeer" class="modal-overlay" @click.self="closeTraffic">
-      <div class="modal-content-lg max-h-[80vh] overflow-y-auto">
+      <div class="modal-content-lg">
         <h3 class="text-lg font-semibold mb-1 dark:text-white">{{ trafficPeer.name }} 流量明细</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">
           累计 ↓ {{ formatBytes(trafficReport.rx) }} / ↑ {{ formatBytes(trafficReport.tx) }}
@@ -191,24 +191,46 @@
         <div v-else-if="trafficReport.days.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
           暂无按天数据，有流量后会自动记录。
         </div>
-        <table v-else class="min-w-full text-sm">
-          <thead>
-            <tr class="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              <th class="py-2 pr-4">日期</th>
-              <th class="py-2 pr-4 text-right">下行</th>
-              <th class="py-2 pr-4 text-right">上行</th>
-              <th class="py-2 text-right">合计</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-            <tr v-for="row in trafficReport.days" :key="row.day" class="dark:text-gray-200">
-              <td class="py-2 pr-4 whitespace-nowrap">{{ row.day }}</td>
-              <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.rx) }}</td>
-              <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.tx) }}</td>
-              <td class="py-2 text-right tabular-nums">{{ formatBytes((Number(row.rx) || 0) + (Number(row.tx) || 0)) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th class="py-2 pr-4">日期</th>
+                <th class="py-2 pr-4 text-right">下行</th>
+                <th class="py-2 pr-4 text-right">上行</th>
+                <th class="py-2 text-right">合计</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              <tr v-for="row in pagedTrafficDays" :key="row.day" class="dark:text-gray-200">
+                <td class="py-2 pr-4 whitespace-nowrap">{{ row.day }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.rx) }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.tx) }}</td>
+                <td class="py-2 text-right tabular-nums">{{ formatBytes((Number(row.rx) || 0) + (Number(row.tx) || 0)) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="trafficReport.days.length > trafficPageSize" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              共 {{ trafficReport.days.length }} 天，第 {{ trafficPage }} / {{ trafficTotalPages }} 页
+            </div>
+            <div class="flex items-center gap-1 flex-wrap">
+              <button type="button" class="pager-btn" :disabled="trafficPage <= 1" @click="trafficPage = 1">«</button>
+              <button type="button" class="pager-btn" :disabled="trafficPage <= 1" @click="trafficPage -= 1">‹</button>
+              <button
+                v-for="item in trafficPageItems"
+                :key="item.key"
+                type="button"
+                class="pager-btn"
+                :class="{ 'pager-btn-active': item.current }"
+                :disabled="item.ellipsis"
+                @click="!item.ellipsis && (trafficPage = item.num)"
+              >{{ item.label }}</button>
+              <button type="button" class="pager-btn" :disabled="trafficPage >= trafficTotalPages" @click="trafficPage += 1">›</button>
+              <button type="button" class="pager-btn" :disabled="trafficPage >= trafficTotalPages" @click="trafficPage = trafficTotalPages">»</button>
+            </div>
+          </div>
+        </template>
         <div class="flex justify-end mt-4">
           <button @click="closeTraffic" class="btn-secondary">关闭</button>
         </div>
@@ -264,6 +286,8 @@ const pageSize = ref(10)
 const trafficPeer = ref(null)
 const trafficLoading = ref(false)
 const trafficReport = ref({ rx: 0, tx: 0, days: [] })
+const trafficPage = ref(1)
+const trafficPageSize = 10
 const showAddModal = ref(false)
 const newPeerName = ref('')
 const newPeerIP = ref('')
@@ -400,9 +424,7 @@ const pagedPeers = computed(() => {
   return sortedPeers.value.slice(start, start + pageSize.value)
 })
 
-const pageItems = computed(() => {
-  const total = totalPages.value
-  const current = page.value
+const pagerItems = (total, current) => {
   const nums = new Set([1, total, current - 1, current, current + 1])
   const list = [...nums].filter(n => n >= 1 && n <= total).sort((a, b) => a - b)
   const items = []
@@ -415,7 +437,18 @@ const pageItems = computed(() => {
     prev = n
   }
   return items
+}
+
+const pageItems = computed(() => pagerItems(totalPages.value, page.value))
+
+const trafficTotalPages = computed(() => Math.max(1, Math.ceil(trafficReport.value.days.length / trafficPageSize)))
+
+const pagedTrafficDays = computed(() => {
+  const start = (trafficPage.value - 1) * trafficPageSize
+  return trafficReport.value.days.slice(start, start + trafficPageSize)
 })
+
+const trafficPageItems = computed(() => pagerItems(trafficTotalPages.value, trafficPage.value))
 
 watch([sortedPeers, pageSize], () => {
   if (page.value > totalPages.value) {
@@ -425,6 +458,12 @@ watch([sortedPeers, pageSize], () => {
 
 watch([sortKey, sortOrder, search], () => {
   page.value = 1
+})
+
+watch(() => trafficReport.value.days.length, () => {
+  if (trafficPage.value > trafficTotalPages.value) {
+    trafficPage.value = trafficTotalPages.value
+  }
 })
 
 const addPeer = async () => {
@@ -540,12 +579,14 @@ const closeTraffic = () => {
   trafficPeer.value = null
   trafficReport.value = { rx: 0, tx: 0, days: [] }
   trafficLoading.value = false
+  trafficPage.value = 1
 }
 
 const openTraffic = async (peer) => {
   trafficPeer.value = peer
   trafficLoading.value = true
   trafficReport.value = { rx: 0, tx: 0, days: [] }
+  trafficPage.value = 1
   try {
     const res = await axios.get(`/api/peers/${peer.id}/traffic`)
     if (trafficPeer.value?.id !== peer.id) return

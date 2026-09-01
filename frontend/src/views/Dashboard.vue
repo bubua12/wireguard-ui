@@ -26,8 +26,14 @@
       <div class="grid grid-cols-2 gap-4 text-sm dark:text-gray-300">
         <div><span class="text-gray-500 dark:text-gray-400">名称：</span> {{ status.name }}</div>
         <div><span class="text-gray-500 dark:text-gray-400">接口：</span> {{ status.interface }}</div>
-        <div><span class="text-gray-500 dark:text-gray-400">公网地址：</span> {{ status.endpoint }}</div>
-        <div><span class="text-gray-500 dark:text-gray-400">内网地址：</span> {{ status.address }}</div>
+        <div class="flex items-center min-w-0">
+          <span class="text-gray-500 dark:text-gray-400 shrink-0">公网地址：</span>
+          <SecretText :value="status.endpoint" />
+        </div>
+        <div class="flex items-center min-w-0">
+          <span class="text-gray-500 dark:text-gray-400 shrink-0">内网地址：</span>
+          <SecretText :value="status.address" />
+        </div>
         <div><span class="text-gray-500 dark:text-gray-400">端口：</span> {{ status.listen_port }}</div>
       </div>
     </div>
@@ -40,6 +46,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import SecretText from '../components/SecretText.vue'
 
 const status = ref({
   configured: false,
