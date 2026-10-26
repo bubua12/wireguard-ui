@@ -40,6 +40,14 @@ func Init(dbPath string) error {
 	return nil
 }
 
+// Close releases the database, which also checkpoints the WAL.
+func Close() error {
+	if DB == nil {
+		return nil
+	}
+	return DB.Close()
+}
+
 func createTables() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
@@ -119,21 +127,30 @@ func migrate() error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	// The pool holds a single connection, so the cursor has to be drained and
+	// closed before any row is repaired; an UPDATE issued while it is open would
+	// wait for that connection forever.
+	var invalid []int64
 	for rows.Next() {
 		var id int64
 		var iface string
 		if err := rows.Scan(&id, &iface); err != nil {
+			rows.Close()
 			return err
 		}
-		if err := wg.ValidateInterfaceName(iface); err != nil {
-			if _, err := DB.Exec(`UPDATE servers SET interface = 'wg0' WHERE id = ?`, id); err != nil {
-				return err
-			}
+		if wg.ValidateInterfaceName(iface) != nil {
+			invalid = append(invalid, id)
 		}
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
 		return err
+	}
+	for _, id := range invalid {
+		if _, err := DB.Exec(`UPDATE servers SET interface = 'wg0' WHERE id = ?`, id); err != nil {
+			return err
+		}
 	}
 
 	indexes := []string{

@@ -1,8 +1,9 @@
 package wg
 
 import (
-	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	// Plain wg calls return immediately; wg-quick may resolve endpoints and run
+	// PostUp/PostDown hooks, so it gets a longer leash.
+	cmdTimeout   = 15 * time.Second
+	quickTimeout = 60 * time.Second
+	// A killed wg-quick can leave children holding its pipes open; stop waiting
+	// for them shortly after the kill instead of hanging the request.
+	cmdWaitDelay = 2 * time.Second
 )
 
 var configDir = "/etc/wireguard"
@@ -32,17 +43,37 @@ func ConfigPath(name string) (string, error) {
 	return filepath.Join(configDir, name+".conf"), nil
 }
 
-func runWG(args ...string) ([]byte, error) {
-	cmd := exec.Command(args[0], args[1:]...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			return out, fmt.Errorf("%s: %w", strings.Join(args, " "), err)
-		}
-		return out, fmt.Errorf("%s: %s", strings.Join(args, " "), msg)
+// runCmd runs args[0] with a deadline and returns its combined output. stdin is
+// only attached when non-empty.
+func runCmd(timeout time.Duration, stdin string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.WaitDelay = cmdWaitDelay
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
-	return out, nil
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return out, nil
+	}
+
+	line := strings.Join(args, " ")
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return out, fmt.Errorf("%s: 执行超时（%s）", line, timeout)
+	case errors.Is(err, exec.ErrNotFound):
+		return out, fmt.Errorf("未找到 %s 命令，请先安装 wireguard-tools", args[0])
+	}
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		return out, fmt.Errorf("%s: %s", line, msg)
+	}
+	return out, fmt.Errorf("%s: %w", line, err)
+}
+
+func runWG(args ...string) ([]byte, error) {
+	return runCmd(cmdTimeout, "", args...)
 }
 
 func SaveServerConfig(name, content string) error {
@@ -76,16 +107,108 @@ func InterfaceUp(name string) error {
 	if err := ValidateInterfaceName(name); err != nil {
 		return err
 	}
-	_, err := runWG("wg-quick", "up", name)
+	_, err := runCmd(quickTimeout, "", "wg-quick", "up", name)
 	return err
 }
+
+// HookError means wg-quick took the interface down but a PostDown hook failed.
+// That happens when the config on disk no longer matches what was applied at
+// startup (for example NAT was switched on after the interface came up, so the
+// iptables -D rules have nothing to delete). The interface is down regardless,
+// so callers may carry on and surface it as a warning.
+type HookError struct{ Err error }
+
+func (e *HookError) Error() string { return e.Err.Error() }
+func (e *HookError) Unwrap() error { return e.Err }
 
 func InterfaceDown(name string) error {
 	if err := ValidateInterfaceName(name); err != nil {
 		return err
 	}
-	_, err := runWG("wg-quick", "down", name)
+	_, err := runCmd(quickTimeout, "", "wg-quick", "down", name)
+	if err != nil && !InterfaceExists(name) {
+		return &HookError{Err: err}
+	}
 	return err
+}
+
+// RestartInterface takes the interface down (when it is up) and brings it up
+// again from the config on disk. Unlike SyncConfig this also applies Address,
+// MTU and PostUp/PostDown changes, at the price of dropping every session.
+//
+// rewrite regenerates the config file. It runs between stop and start so that
+// the PostDown hooks of the old interface execute against the config it was
+// started with, and the new PostUp hooks against the new one; with NAT toggled
+// the other order leaves iptables rules behind or fails to delete them.
+// A failing PostDown hook does not abort the restart; it is returned as warning.
+func RestartInterface(name, address string, rewrite func() error) (warning error, err error) {
+	wasUp := InterfaceExists(name)
+	if wasUp {
+		if err := InterfaceDown(name); err != nil {
+			var hook *HookError
+			if !errors.As(err, &hook) {
+				return nil, err
+			}
+			warning = err
+		}
+	}
+	err = rewrite()
+	if err == nil {
+		err = checkAddressFree(name, address)
+	}
+	if err == nil {
+		err = InterfaceUp(name)
+	}
+	if err != nil && wasUp {
+		return warning, fmt.Errorf("接口已停止，但重新启动失败: %w", err)
+	}
+	return warning, err
+}
+
+// checkAddressFree refuses to bring up name when another interface already
+// carries the server address, which would silently create a second interface
+// with a colliding address.
+func checkAddressFree(name, address string) error {
+	if owner, ok := interfaceHoldingAddress(address); ok && owner != name {
+		return fmt.Errorf("内网地址 %s 已在接口 %s 上，但当前接口名是 %q（系统里没有这个网卡）。请把「接口名」改回 %s 后再同步；显示名称不要填到接口名里", hostIP(address), owner, name, owner)
+	}
+	return nil
+}
+
+// NeedsRestart reports whether the running interface still carries an older
+// Address or MTU than the saved settings. wg syncconf cannot change either, so
+// only a restart applies them. It is false when the interface is not running.
+func NeedsRestart(name, address string, mtu int) bool {
+	if ValidateInterfaceName(name) != nil {
+		return false
+	}
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return false
+	}
+	if mtu > 0 && iface.MTU != mtu {
+		return true
+	}
+
+	want, wantNet, err := net.ParseCIDR(strings.TrimSpace(address))
+	if err != nil {
+		return false
+	}
+	wantOnes, _ := wantNet.Mask.Size()
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if ones, _ := ipnet.Mask.Size(); ipnet.IP.Equal(want) && ones == wantOnes {
+			return false
+		}
+	}
+	return true
 }
 
 // SyncConfig assumes the full wg-quick config is already on disk.
@@ -99,8 +222,8 @@ func SyncConfig(name, address string) error {
 		return err
 	}
 	if !InterfaceExists(name) {
-		if owner, ok := interfaceHoldingAddress(address); ok && owner != name {
-			return fmt.Errorf("内网地址 %s 已在接口 %s 上，但当前接口名是 %q（系统里没有这个网卡）。请把「接口名」改回 %s 后再同步；显示名称不要填到接口名里", hostIP(address), owner, name, owner)
+		if err := checkAddressFree(name, address); err != nil {
+			return err
 		}
 		return InterfaceUp(name)
 	}
@@ -169,11 +292,18 @@ func interfaceHoldingAddress(cidr string) (string, bool) {
 }
 
 func stripQuickConfig(name string) ([]byte, error) {
-	cmd := exec.Command("wg-quick", "strip", name)
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "wg-quick", "strip", name)
+	cmd.WaitDelay = cmdWaitDelay
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return nil, fmt.Errorf("未找到 wg-quick 命令，请先安装 wireguard-tools")
+		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			return nil, fmt.Errorf("wg-quick strip %s: %w", name, err)
@@ -183,26 +313,19 @@ func stripQuickConfig(name string) ([]byte, error) {
 	return out, nil
 }
 
+// AddPeer adds the peer to the live interface, or replaces its allowed IPs and
+// preshared key when it is already there.
 func AddPeer(interfaceName, publicKey, presharedKey, allowedIPs string) error {
 	if err := ValidateInterfaceName(interfaceName); err != nil {
 		return err
 	}
 	args := []string{"wg", "set", interfaceName, "peer", publicKey, "allowed-ips", allowedIPs}
+	stdin := ""
 	if presharedKey != "" {
 		args = append(args, "preshared-key", "/dev/stdin")
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Stdin = strings.NewReader(presharedKey + "\n")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			msg := strings.TrimSpace(string(out))
-			if msg == "" {
-				return fmt.Errorf("wg set peer: %w", err)
-			}
-			return fmt.Errorf("wg set peer: %s", msg)
-		}
-		return nil
+		stdin = presharedKey + "\n"
 	}
-	_, err := runWG(args...)
+	_, err := runCmd(cmdTimeout, stdin, args...)
 	return err
 }
 
@@ -214,72 +337,81 @@ func RemovePeer(interfaceName, publicKey string) error {
 	return err
 }
 
-func GetPeerHandshakes(interfaceName string) (map[string]int64, error) {
-	if err := ValidateInterfaceName(interfaceName); err != nil {
-		return nil, err
-	}
-	output, err := runWG("wg", "show", interfaceName, "latest-handshakes")
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]int64)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		parts := strings.Fields(scanner.Text())
-		if len(parts) >= 2 {
-			timestamp, _ := strconv.ParseInt(parts[1], 10, 64)
-			result[parts[0]] = timestamp
-		}
-	}
-	return result, nil
-}
-
-// Transfer is a peer's rx/tx byte counters from `wg show transfer`.
+// Transfer is a peer's rx/tx byte counters. Both are from the server's point of
+// view: rx was received from the peer (its upload), tx was sent to it (its
+// download).
 type Transfer struct {
 	Rx int64
 	Tx int64
 }
 
-func GetPeerTransferMap(interfaceName string) (map[string]Transfer, error) {
+// PeerState is what the kernel currently knows about a peer.
+type PeerState struct {
+	Endpoint        string // remote ip:port of the last packet, empty if never seen
+	LatestHandshake int64  // unix seconds, 0 if never
+	Transfer        Transfer
+}
+
+// GetPeerStates reads every peer's endpoint, handshake and counters with a
+// single `wg show <iface> dump`.
+func GetPeerStates(interfaceName string) (map[string]PeerState, error) {
 	if err := ValidateInterfaceName(interfaceName); err != nil {
 		return nil, err
 	}
-	output, err := runWG("wg", "show", interfaceName, "transfer")
+	output, err := runWG("wg", "show", interfaceName, "dump")
 	if err != nil {
 		return nil, err
 	}
-	return parseTransferOutput(string(output)), nil
+	return parseDump(string(output)), nil
 }
 
-func parseTransferOutput(output string) map[string]Transfer {
-	result := make(map[string]Transfer)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		parts := strings.Fields(scanner.Text())
-		if len(parts) < 3 {
+// parseDump reads `wg show <iface> dump`. The first line describes the
+// interface; every other line is tab separated:
+// public-key preshared-key endpoint allowed-ips latest-handshake rx tx keepalive
+func parseDump(output string) map[string]PeerState {
+	result := make(map[string]PeerState)
+	for i, line := range strings.Split(strings.TrimRight(output, "\r\n"), "\n") {
+		if i == 0 {
 			continue
 		}
-		rx, err1 := strconv.ParseInt(parts[1], 10, 64)
-		tx, err2 := strconv.ParseInt(parts[2], 10, 64)
-		if err1 != nil || err2 != nil {
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) < 8 {
 			continue
 		}
-		result[parts[0]] = Transfer{Rx: rx, Tx: tx}
+		handshake, err1 := strconv.ParseInt(f[4], 10, 64)
+		rx, err2 := strconv.ParseInt(f[5], 10, 64)
+		tx, err3 := strconv.ParseInt(f[6], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			continue
+		}
+		endpoint := f[2]
+		if endpoint == "(none)" {
+			endpoint = ""
+		}
+		result[f[0]] = PeerState{
+			Endpoint:        endpoint,
+			LatestHandshake: handshake,
+			Transfer:        Transfer{Rx: rx, Tx: tx},
+		}
 	}
 	return result
 }
 
-func GetPeerTransfers(interfaceName string) (rx, tx int64, err error) {
-	m, err := GetPeerTransferMap(interfaceName)
+// Transfers keeps only the byte counters of states.
+func Transfers(states map[string]PeerState) map[string]Transfer {
+	out := make(map[string]Transfer, len(states))
+	for key, st := range states {
+		out[key] = st.Transfer
+	}
+	return out
+}
+
+func GetPeerTransferMap(interfaceName string) (map[string]Transfer, error) {
+	states, err := GetPeerStates(interfaceName)
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	for _, v := range m {
-		rx += v.Rx
-		tx += v.Tx
-	}
-	return rx, tx, nil
+	return Transfers(states), nil
 }
 
 func IsPeerOnline(lastHandshake int64) bool {
@@ -287,4 +419,16 @@ func IsPeerOnline(lastHandshake int64) bool {
 		return false
 	}
 	return time.Now().Unix()-lastHandshake < 180
+}
+
+// HandshakeAge returns the seconds since lastHandshake, or -1 if the peer never
+// completed one.
+func HandshakeAge(lastHandshake int64) int64 {
+	if lastHandshake <= 0 {
+		return -1
+	}
+	if age := time.Now().Unix() - lastHandshake; age > 0 {
+		return age
+	}
+	return 0
 }

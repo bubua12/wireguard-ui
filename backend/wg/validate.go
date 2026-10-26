@@ -1,6 +1,7 @@
 package wg
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -105,6 +106,13 @@ func ValidateListenPort(port int) error {
 	return nil
 }
 
+// hostRe matches a hostname (labels of letters, digits, '-' and '_').
+var hostRe = regexp.MustCompile(`^[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*$`)
+
+func isHostOrIP(s string) bool {
+	return net.ParseIP(s) != nil || (len(s) <= 253 && hostRe.MatchString(s))
+}
+
 func ValidateEndpoint(endpoint string) error {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
@@ -117,8 +125,59 @@ func ValidateEndpoint(endpoint string) error {
 	if host == "" {
 		return fmt.Errorf("公网地址缺少主机名")
 	}
-	if _, err := strconv.Atoi(port); err != nil {
-		return fmt.Errorf("公网地址端口无效")
+	if !isHostOrIP(host) {
+		return fmt.Errorf("公网地址的主机名 %q 无效", host)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("公网地址端口无效，应在 1-65535 之间")
+	}
+	return nil
+}
+
+// ValidateDNS accepts an empty value or a comma separated list of IP addresses
+// and search domains. Anything else could smuggle extra lines into the
+// downloaded client config.
+func ValidateDNS(dns string) error {
+	dns = strings.TrimSpace(dns)
+	if dns == "" {
+		return nil
+	}
+	for _, item := range strings.Split(dns, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return fmt.Errorf("DNS 格式无效，多个地址请用逗号分隔，例如 1.1.1.1, 8.8.8.8")
+		}
+		if !isHostOrIP(item) {
+			return fmt.Errorf("DNS %q 无效，应为 IP 地址或域名", item)
+		}
+	}
+	return nil
+}
+
+// NormalizeDNS trims and joins a validated DNS list as "a, b".
+func NormalizeDNS(dns string) string {
+	parts := strings.Split(dns, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+func ValidateMTU(mtu int) error {
+	if mtu != 0 && (mtu < 576 || mtu > 9000) {
+		return fmt.Errorf("MTU 应为 0（自动）或 576-9000 之间的数值")
+	}
+	return nil
+}
+
+// ValidateKey checks a WireGuard key: 32 bytes of standard base64.
+func ValidateKey(key string) error {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(key))
+	if err != nil || len(raw) != 32 {
+		return fmt.Errorf("密钥格式无效")
 	}
 	return nil
 }

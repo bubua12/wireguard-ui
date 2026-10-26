@@ -3,6 +3,7 @@ package wg
 import (
 	"fmt"
 	"net"
+	"strings"
 	"wireguard-ui/model"
 )
 
@@ -22,27 +23,24 @@ func ClientAllowedIPs(server *model.Server) string {
 }
 
 func GenerateClientConfig(server *model.Server, peer *model.Peer) string {
-	config := fmt.Sprintf(`[Interface]
-PrivateKey = %s
-Address = %s
-DNS = %s
-`, peer.PrivateKey, peer.AllowedIPs, server.DNS)
+	var b strings.Builder
 
+	fmt.Fprintf(&b, "[Interface]\nPrivateKey = %s\nAddress = %s\n", peer.PrivateKey, peer.AllowedIPs)
+	if dns := strings.TrimSpace(server.DNS); dns != "" {
+		fmt.Fprintf(&b, "DNS = %s\n", dns)
+	}
 	if server.MTU > 0 {
-		config += fmt.Sprintf("MTU = %d\n", server.MTU)
+		fmt.Fprintf(&b, "MTU = %d\n", server.MTU)
 	}
 
-	config += fmt.Sprintf(`
-[Peer]
-PublicKey = %s
-Endpoint = %s
-AllowedIPs = %s
-PersistentKeepalive = %d
-`, server.PublicKey, server.Endpoint, ClientAllowedIPs(server), peer.PersistentKeepalive)
-
+	fmt.Fprintf(&b, "\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = %s\n",
+		server.PublicKey, server.Endpoint, ClientAllowedIPs(server))
+	if peer.PersistentKeepalive > 0 {
+		fmt.Fprintf(&b, "PersistentKeepalive = %d\n", peer.PersistentKeepalive)
+	}
 	if peer.PresharedKey != "" {
-		config += fmt.Sprintf("PresharedKey = %s\n", peer.PresharedKey)
+		fmt.Fprintf(&b, "PresharedKey = %s\n", peer.PresharedKey)
 	}
 
-	return config
+	return b.String()
 }

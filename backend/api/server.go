@@ -31,14 +31,17 @@ type CreateServerReq struct {
 }
 
 func CreateServer(c *gin.Context) {
-	if n, err := db.ServerCount(); err == nil && n > 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "服务器已配置，请使用更新或导入覆盖"})
+	var req CreateServerReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "内网地址和公网地址不能为空"})
 		return
 	}
 
-	var req CreateServerReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	mutateMu.Lock()
+	defer mutateMu.Unlock()
+
+	if n, err := db.ServerCount(); err == nil && n > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "服务器已配置，请使用更新或导入覆盖"})
 		return
 	}
 
@@ -54,10 +57,12 @@ func CreateServer(c *gin.Context) {
 		EnableNAT:  req.EnableNAT,
 	}
 	defaultsForServer(server)
-	if err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.ListenPort, server.MTU); err != nil {
+	dns, err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.DNS, server.ListenPort, server.MTU)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	server.DNS = dns
 
 	privateKey, publicKey, err := wg.GenerateKeyPair()
 	if err != nil {

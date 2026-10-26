@@ -6,7 +6,10 @@ import (
 	"wireguard-ui/wg"
 )
 
-const transferRetentionDays = 90
+const (
+	transferRetentionDays = 90
+	dayLayout             = "2006-01-02"
+)
 
 type TrafficDay struct {
 	Day string `json:"day"`
@@ -18,6 +21,9 @@ type TrafficReport struct {
 	Rx   int64        `json:"rx"`
 	Tx   int64        `json:"tx"`
 	Days []TrafficDay `json:"days"`
+	// Today is the server's current day (days are bucketed in server time), so
+	// a client in another time zone can lay the chart out on the same calendar.
+	Today string `json:"today"`
 }
 
 func transferDelta(prev, curr int64, exists bool) int64 {
@@ -113,8 +119,8 @@ func ApplyTransferSample(live map[string]wg.Transfer, now time.Time) error {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	day := now.Format("2006-01-02")
-	cutoff := now.AddDate(0, 0, -transferRetentionDays).Format("2006-01-02")
+	day := now.Format(dayLayout)
+	cutoff := now.AddDate(0, 0, -transferRetentionDays).Format(dayLayout)
 
 	tx, err := DB.Begin()
 	if err != nil {
@@ -182,7 +188,7 @@ func GetPeerTrafficReport(publicKey string, live wg.Transfer, now time.Time) (*T
 	if now.IsZero() {
 		now = time.Now()
 	}
-	today := now.Format("2006-01-02")
+	today := now.Format(dayLayout)
 
 	tx, err := DB.Begin()
 	if err != nil {
@@ -228,7 +234,7 @@ func GetPeerTrafficReport(publicKey string, live wg.Transfer, now time.Time) (*T
 		totalRx += d.Rx
 		totalTx += d.Tx
 	}
-	return &TrafficReport{Rx: totalRx, Tx: totalTx, Days: days}, nil
+	return &TrafficReport{Rx: totalRx, Tx: totalTx, Days: days, Today: today}, nil
 }
 
 func mergePending(days []TrafficDay, pendingRx, pendingTx int64, today string) []TrafficDay {
@@ -246,4 +252,76 @@ func mergePending(days []TrafficDay, pendingRx, pendingTx int64, today string) [
 	out := make([]TrafficDay, 0, len(days)+1)
 	out = append(out, inserted)
 	return append(out, days...)
+}
+
+// GetTrafficHistory sums the traffic of the given peers for each of the last
+// `days` days, today included, oldest first. Days without data come back as
+// zeros so charts get a continuous axis, and the live bytes the sampler has not
+// recorded yet are folded into today.
+func GetTrafficHistory(keys []string, live map[string]wg.Transfer, days int, now time.Time) ([]TrafficDay, error) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if days < 1 {
+		days = 1
+	}
+	if days > transferRetentionDays {
+		days = transferRetentionDays
+	}
+	wanted := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		wanted[key] = struct{}{}
+	}
+
+	out := make([]TrafficDay, days)
+	index := make(map[string]int, days)
+	for i := range out {
+		day := now.AddDate(0, 0, i-(days-1)).Format(dayLayout)
+		out[i] = TrafficDay{Day: day}
+		index[day] = i
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	cursors, err := loadCursorsTx(tx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(`SELECT day, public_key, rx, tx FROM peer_transfer_daily WHERE day >= ?`, out[0].Day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day, key string
+		var rx, txBytes int64
+		if err := rows.Scan(&day, &key, &rx, &txBytes); err != nil {
+			return nil, err
+		}
+		i, ok := index[day]
+		if _, mine := wanted[key]; !ok || !mine {
+			continue
+		}
+		out[i].Rx += rx
+		out[i].Tx += txBytes
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	today := &out[days-1]
+	for key := range wanted {
+		lv, ok := live[key]
+		if !ok {
+			continue
+		}
+		cur, hasCursor := cursors[key]
+		today.Rx += transferDelta(cur.Rx, lv.Rx, hasCursor)
+		today.Tx += transferDelta(cur.Tx, lv.Tx, hasCursor)
+	}
+	return out, nil
 }

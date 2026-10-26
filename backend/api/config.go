@@ -34,6 +34,7 @@ func GetPeerConfig(c *gin.Context) {
 
 	config := wg.GenerateClientConfig(server, peer)
 	filename := wg.SanitizeDownloadName(peer.Name) + ".conf"
+	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(config))
 }
@@ -67,5 +68,6 @@ func GetPeerQRCode(c *gin.Context) {
 		return
 	}
 
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "image/png", png)
 }

@@ -31,6 +31,10 @@ func ImportConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数"})
 		return
 	}
+
+	mutateMu.Lock()
+	defer mutateMu.Unlock()
+
 	if err := wg.ValidateEndpoint(req.Endpoint); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -49,6 +53,10 @@ func ImportConfig(c *gin.Context) {
 	}
 	if parsed.Interface.PrivateKey == "" || parsed.Interface.Address == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "配置文件缺少 Interface 的 PrivateKey 或 Address"})
+		return
+	}
+	if err := wg.ValidateKey(parsed.Interface.PrivateKey); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "配置文件中的 PrivateKey 格式无效"})
 		return
 	}
 
@@ -76,14 +84,21 @@ func ImportConfig(c *gin.Context) {
 	if parsed.Interface.DNS != "" && req.DNS == "" {
 		server.DNS = parsed.Interface.DNS
 	}
-	if err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.ListenPort, server.MTU); err != nil {
+	dns, err := validateServerFields(server.Interface, server.Address, server.Endpoint, server.DNS, server.ListenPort, server.MTU)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	server.DNS = dns
 
+	skipped := 0
 	peers := make([]model.Peer, 0, len(parsed.Peers))
 	for i, p := range parsed.Peers {
 		if p.PublicKey == "" || strings.TrimSpace(p.AllowedIPs) == "" {
+			continue
+		}
+		if wg.ValidateKey(p.PublicKey) != nil || (p.PresharedKey != "" && wg.ValidateKey(p.PresharedKey) != nil) {
+			skipped++
 			continue
 		}
 		name := fmt.Sprintf("peer-%d", i+1)
@@ -108,9 +123,13 @@ func ImportConfig(c *gin.Context) {
 		return
 	}
 
+	message := fmt.Sprintf("已覆盖导入服务器 %s 和 %d 个客户端（导入的客户端没有私钥，无法下载配置）", server.Interface, len(peers))
+	if skipped > 0 {
+		message += fmt.Sprintf("；有 %d 个客户端因密钥格式无效被跳过", skipped)
+	}
 	c.JSON(http.StatusOK, ImportResult{
 		Server:     server,
 		PeersCount: len(peers),
-		Message:    fmt.Sprintf("已覆盖导入服务器 %s 和 %d 个客户端（导入的客户端没有私钥，无法下载配置）", server.Interface, len(peers)),
+		Message:    message,
 	})
 }

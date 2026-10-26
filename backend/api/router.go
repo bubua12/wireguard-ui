@@ -3,7 +3,6 @@ package api
 import (
 	"io/fs"
 	"net/http"
-	"strings"
 	"wireguard-ui/config"
 	"wireguard-ui/web"
 
@@ -23,6 +22,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	if cfg.Debug {
 		r.Use(gin.Logger())
 	}
+	r.Use(securityHeaders(), limitBody(maxBodyBytes))
 
 	if cfg.TrustProxy {
 		_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
@@ -58,9 +58,11 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		api.POST("/server", CreateServer)
 		api.PUT("/server", UpdateServer)
 		api.GET("/status", GetStatus)
+		api.GET("/traffic", GetTrafficHistory)
 
 		api.GET("/peers", GetPeers)
 		api.GET("/peers/status", GetPeersStatus)
+		api.GET("/peers/next-ip", GetNextPeerIP)
 		api.POST("/peers", CreatePeer)
 		api.PUT("/peers/:id", UpdatePeer)
 		api.DELETE("/peers/:id", DeletePeer)
@@ -71,6 +73,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		api.GET("/peers/:id/traffic", GetPeerTraffic)
 
 		api.POST("/sync", SyncConfig)
+		api.POST("/interface/:action", InterfaceControl)
 		api.POST("/import", ImportConfig)
 		api.POST("/change-password", ChangePassword)
 	}
@@ -84,21 +87,30 @@ func serveFrontend(r *gin.Engine) {
 	if err != nil {
 		return
 	}
-	fileServer := http.FileServer(http.FS(sub))
-	r.NoRoute(func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-		path := strings.TrimPrefix(c.Request.URL.Path, "/")
-		if path != "" {
-			if f, err := sub.Open(path); err == nil {
-				_ = f.Close()
-				fileServer.ServeHTTP(c.Writer, c.Request)
-				return
-			}
-		}
-		c.Request.URL.Path = "/"
-		fileServer.ServeHTTP(c.Writer, c.Request)
-	})
+	r.NoRoute(newStaticSite(sub).handle)
+}
+
+const maxBodyBytes = 1 << 20
+
+// securityHeaders applies conservative browser protections. The app is a
+// same-origin SPA, so everything may only load from 'self'; blob: and data:
+// images cover the QR code, and inline styles are what Vue bindings produce.
+func securityHeaders() gin.HandlerFunc {
+	const csp = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; " +
+		"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	return func(c *gin.Context) {
+		h := c.Writer.Header()
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		c.Next()
+	}
+}
+
+func limitBody(max int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, max)
+		c.Next()
+	}
 }

@@ -116,6 +116,9 @@ func TestApplyTransferSampleAndUsage(t *testing.T) {
 	if report.Rx != 1500 || report.Tx != 250 {
 		t.Fatalf("report totals = %+v", report)
 	}
+	if report.Today != "2026-08-20" {
+		t.Fatalf("today = %q", report.Today)
+	}
 	if len(report.Days) != 2 {
 		t.Fatalf("days = %+v", report.Days)
 	}

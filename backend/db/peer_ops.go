@@ -2,14 +2,34 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 	"wireguard-ui/model"
+	"wireguard-ui/wg"
 )
 
-func UpdatePeer(id int64, name string, enabled bool) error {
-	_, err := DB.Exec(`UPDATE peers SET name=?, enabled=?, updated_at=? WHERE id=?`,
-		name, enabled, time.Now(), id)
-	return err
+// UpdatePeer saves the editable fields of p. When newIP is not empty the peer
+// moves to that address, which the caller has already validated and
+// canonicalised; it is refused if another peer of the server holds it.
+func UpdatePeer(p *model.Peer, newIP string) error {
+	return WithTx(func(tx *sql.Tx) error {
+		if newIP != "" && newIP != p.AllowedIPs {
+			others, err := listAllowedIPsTx(tx, p.ServerID, p.ID)
+			if err != nil {
+				return err
+			}
+			for _, existing := range others {
+				if canon, err := wg.CanonicalClientIP(existing); err == nil && canon == newIP {
+					return fmt.Errorf("IP地址 %s 已被使用", newIP)
+				}
+			}
+			p.AllowedIPs = newIP
+		}
+		p.UpdatedAt = time.Now()
+		_, err := tx.Exec(`UPDATE peers SET name=?, enabled=?, allowed_ips=?, persistent_keepalive=?, updated_at=? WHERE id=?`,
+			p.Name, p.Enabled, p.AllowedIPs, p.PersistentKeepalive, p.UpdatedAt, p.ID)
+		return err
+	})
 }
 
 func DeletePeer(id int64) error {

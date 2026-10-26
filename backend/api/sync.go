@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"wireguard-ui/db"
 	"wireguard-ui/wg"
@@ -9,6 +10,9 @@ import (
 )
 
 func SyncConfig(c *gin.Context) {
+	mutateMu.Lock()
+	defer mutateMu.Unlock()
+
 	server, err := db.GetFirstServer()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Server not configured"})
@@ -31,9 +35,16 @@ func SyncConfig(c *gin.Context) {
 	}
 
 	if err := wg.SyncConfig(server.Interface, server.Address); err != nil {
+		log.Printf("sync %s: %v", server.Interface, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Config synced", "interface": server.Interface, "up": wg.InterfaceExists(server.Interface)})
+	up := wg.InterfaceExists(server.Interface)
+	c.JSON(http.StatusOK, gin.H{
+		"message":          "Config synced",
+		"interface":        server.Interface,
+		"up":               up,
+		"restart_required": up && wg.NeedsRestart(server.Interface, server.Address, server.MTU),
+	})
 }

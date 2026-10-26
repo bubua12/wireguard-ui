@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"context"
 	"log"
 	"time"
 	"wireguard-ui/db"
@@ -9,17 +10,27 @@ import (
 
 const sampleInterval = time.Minute
 
-func Start() {
-	go run()
-}
-
-func run() {
-	ticker := time.NewTicker(sampleInterval)
-	defer ticker.Stop()
-	Sample()
-	for range ticker.C {
+// Start records peer traffic every minute until ctx is cancelled. The returned
+// channel closes after the final sample has been written, so shutdown can wait
+// for it before the database goes away.
+func Start(ctx context.Context) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(sampleInterval)
+		defer ticker.Stop()
 		Sample()
-	}
+		for {
+			select {
+			case <-ctx.Done():
+				Sample()
+				return
+			case <-ticker.C:
+				Sample()
+			}
+		}
+	}()
+	return done
 }
 
 func Sample() {

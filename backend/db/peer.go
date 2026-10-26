@@ -57,7 +57,7 @@ func GetPeer(id int64) (*model.Peer, error) {
 }
 
 func GetPeersByServer(serverID int64) ([]model.Peer, error) {
-	rows, err := DB.Query(`SELECT `+peerColumns+` FROM peers WHERE server_id = ?`, serverID)
+	rows, err := DB.Query(`SELECT `+peerColumns+` FROM peers WHERE server_id = ? ORDER BY id`, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +74,10 @@ func GetPeersByServer(serverID int64) ([]model.Peer, error) {
 	return peers, rows.Err()
 }
 
-func listAllowedIPsTx(tx *sql.Tx, serverID int64) ([]string, error) {
-	rows, err := tx.Query(`SELECT allowed_ips FROM peers WHERE server_id = ?`, serverID)
+// listAllowedIPsTx returns the allowed IPs of every peer of the server except
+// the one with id exceptID (pass 0 to include all).
+func listAllowedIPsTx(tx *sql.Tx, serverID, exceptID int64) ([]string, error) {
+	rows, err := tx.Query(`SELECT allowed_ips FROM peers WHERE server_id = ? AND id <> ?`, serverID, exceptID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +128,7 @@ func AllocateAndCreatePeer(server *model.Server, p *model.Peer, requestedIP stri
 		return err
 	}
 
-	used, err := listAllowedIPsTx(tx, server.ID)
+	used, err := listAllowedIPsTx(tx, server.ID, 0)
 	if err != nil {
 		return err
 	}
