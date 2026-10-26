@@ -1,92 +1,96 @@
 <template>
-  <div class="min-h-screen dark:bg-gray-900">
-    <!-- 固定的主题切换按钮 -->
-    <button v-if="isLoginPage" @click="toggleTheme"
-      class="fixed top-4 right-4 p-2 rounded-md bg-white dark:bg-gray-800 shadow hover:bg-gray-100 dark:hover:bg-gray-700 z-50">
-      <svg v-if="isDark" class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-        <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
-      </svg>
-      <svg v-else class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-        <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-      </svg>
+  <div class="min-h-screen">
+    <button
+      v-if="isLoginPage"
+      type="button"
+      class="fixed right-4 top-4 z-30 rounded-md bg-white p-2 shadow hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700"
+      :title="isDark ? '切换到亮色' : '切换到暗色'"
+      aria-label="切换主题"
+      @click="toggle"
+    >
+      <Icon :name="isDark ? 'sun' : 'moon'" class="h-5 w-5" :class="isDark ? 'text-yellow-400' : 'text-gray-600'" />
     </button>
 
-    <nav v-if="!isLoginPage" class="fixed top-0 left-0 w-screen bg-white shadow dark:bg-gray-800 z-40">
-      <div class="max-w-7xl mx-auto px-4">
-        <div class="flex justify-between h-16">
-          <div class="flex items-center">
-            <!-- WireGuard Logo -->
-            <svg class="w-8 h-8 mr-2" viewBox="0 0 310 310" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path fill="#88171a" d="m301.28 145.56s6.9396-145.56-153.04-145.56c-141.48 0-145.9 139.63-145.9 139.63s-20.811 160.37 149.16 160.37c163.02 0 149.78-154.44 149.78-154.44zm-197.8-50.863c30.017-18.364 68.366-7.1401 82.735 20.476 2.7233 5.2338 3.0694 13.291 1.3447 18.782-5.9546 18.956-20.014 29.587-39.312 34.103 5.6892-4.8707 10.218-10.394 11.659-18.025a26.402 26.402 0 0 0-4.5425-20.956 26.76 26.76 0 0 0-30.811-9.3892c-11.881 4.5111-18.389 15.354-17.216 28.683 1.0898 12.381 10.484 20.405 28.061 23.453-2.627 1.3904-4.6503 2.4144-6.6299 3.5172a63.918 63.918 0 0 0-20.544 17.868c-1.7839 2.4084-3.0104 2.6024-5.727 0.94116-35.338-21.61-37.609-75.844 0.98226-99.453zm-26.449 133.53c-5.6769 1.441-11.178 3.5742-16.981 5.4775 2.8385-19.151 25.265-36.788 44.23-34.776a48.881 48.881 0 0 0-9.242 25.893c-6.302 1.1606-12.241 1.9414-18.007 3.405zm120.79-186.98c5.6099 0.20612 11.23 0.12091 16.844 0.25378a29.052 29.052 0 0 1 4.1674 0.58069 40.607 40.607 0 0 1-4.2357 5.4332c-2.007 1.8701-4.2745 3.6986-7.1661 0.856-0.6955-0.68372-2.3386-0.52679-3.5487-0.54272-5.5823-0.07336-11.172-0.25177-16.746-0.04132a104.04 104.04 0 0 0-14.425 1.473c-0.89368 0.16046-2.2299 3.1315-1.8191 4.227 0.9693 2.5853 2.3833 5.4363 4.4779 7.0898 7.7403 6.11 15.972 11.596 23.748 17.664 7.556 5.8966 14.589 12.358 18.875 21.253 5.5843 11.59 5.747 23.743 3.3388 35.95-4.0203 20.378-14.333 37.261-31.032 49.524-6.7288 4.941-15.06 7.7451-22.767 11.295-6.778 3.1225-13.755 5.8115-20.549 8.9008-12.249 5.5695-19.133 18.865-17.108 32.688 1.8585 12.685 12.987 23.271 25.735 25.456 15.292 2.6216 31.071-7.3163 34.812-22.86 4.2067-17.478-5.2898-33.083-23.065-37.813-0.78271-0.20831-1.5684-0.40552-3.2012-0.8269 4.7549-2.1245 8.8614-3.6381 12.653-5.7244q9.9213-5.4594 19.481-11.562c1.8742-1.199 2.8868-1.1996 4.4852 0.18225 12.225 10.57 19.518 23.718 21.563 39.839 3.3845 26.684-9.2471 51.198-33.072 63.762-36.86 19.439-81.965-2.6864-90.106-43.552-6.9738-35.003 17.73-66.754 47.462-72.884 12.787-2.6364 24.48-7.9596 33.57-17.807 5.8652-6.3541 8.7084-11.806 9.6772-14.266a39.565 39.565 0 0 0 2.7211-14.469 33.867 33.867 0 0 0-2.9654-12.398c-3.104-7.075-14.995-18.33-17.939-20.704l-28-21.921c-0.98761-0.81256-2.0994-0.75366-4.5079-0.59045-2.8611 0.19391-10.175 0.59888-13.331-0.22815 2.553-1.9321 9.5132-4.7451 12.502-7.007-9.0734-6.1297-19.43-3.9158-28.941-5.7461 2.1992-4.0959 13.081-10.39 19.27-11.091a91.533 91.533 0 0 0-1.6876-10.281c-0.37781-1.3917-1.9312-2.7408-3.2864-3.5355-3.286-1.9267-6.7694-3.5167-10.549-5.4327a21.936 21.936 0 0 1 11.332-3.5055 42.316 42.316 0 0 1 11.348 1.1056c6.7422 1.5405 12.124 0.53491 17.488-4.048-4.222-1.7002-8.4435-3.2535-12.538-5.0907a123.04 123.04 0 0 1-11.779-6.1583c10.622 1.4755 20.896 5.4585 31.757 4.0034q0.1387-0.74048 0.27728-1.4809c-8.1194-1.8899-16.239-3.7798-25.229-5.8724 15.04-1.3769 29.042-1.604 42.301 4.8541 3.731 1.8173 7.6348 3.3215 11.211 5.3972 1.7443 1.0124 2.9186 3.0078 4.3496 4.5594 1.1366 1.2325 2.0495 2.8837 3.446 3.6264 5.3 2.8184 11.134 2.9291 17.078 2.7879 0.04443-0.67694 0.08606-1.3114 0.1308-1.9933 5.9821 1.8693 12.715 8.7679 12.704 13.806-9.6911 0-19.374-0.037-29.056 0.05389-1.0348 0.0097-2.0626 0.76563-3.0936 1.1754 0.97986 0.57067 1.9428 1.5994 2.9423 1.6362z"/>
-              <path fill="#88171a" d="m185.32 26.906a1.4806 1.4806 0 0 0-0.18927 2.3686 2.2326 2.2326 0 0 0 3.0724 0.8219c0.9328-0.47052 1.8478-0.97137 2.975-1.5665-0.9079-0.775-1.6362-1.4148-2.3857-2.0324-1.318-1.086-2.411-0.40386-3.4724 0.40833z"/>
-            </svg>
-            <span class="text-xl font-bold text-gray-800 dark:text-white">WireGuard UI</span>
-          </div>
-          <div class="flex items-center space-x-4 flex-wrap">
-            <router-link to="/" class="nav-link">仪表盘</router-link>
-            <router-link to="/peers" class="nav-link">客户端</router-link>
-            <router-link to="/settings" class="nav-link">设置</router-link>
-            <button @click="toggleTheme" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
-              <svg v-if="isDark" class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
-              </svg>
-              <svg v-else class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-              </svg>
-            </button>
-            <button @click="logout" class="text-sm text-red-600 hover:text-red-800 dark:text-red-400">
-              退出
-            </button>
-          </div>
+    <header
+      v-if="!isLoginPage"
+      class="fixed inset-x-0 top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur dark:border-gray-700 dark:bg-gray-800/90"
+    >
+      <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-4">
+        <router-link to="/" class="flex shrink-0 items-center gap-2" aria-label="WireGuard UI">
+          <LogoMark class="h-8 w-8" />
+          <span class="hidden text-xl font-bold text-gray-800 dark:text-white sm:inline">WireGuard UI</span>
+        </router-link>
+
+        <nav class="flex items-center gap-1" aria-label="主导航">
+          <router-link
+            v-for="item in nav"
+            :key="item.to"
+            :to="item.to"
+            class="nav-link"
+            active-class="nav-link-active"
+            :aria-label="item.label"
+          >
+            <Icon :name="item.icon" class="h-5 w-5 sm:h-4 sm:w-4" />
+            <span class="hidden sm:inline">{{ item.label }}</span>
+          </router-link>
+        </nav>
+
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+            :title="isDark ? '切换到亮色' : '切换到暗色'"
+            aria-label="切换主题"
+            @click="toggle"
+          >
+            <Icon :name="isDark ? 'sun' : 'moon'" class="h-5 w-5" :class="isDark ? 'text-yellow-400' : 'text-gray-600'" />
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+            title="退出登录"
+            @click="logout"
+          >
+            <Icon name="logout" class="h-5 w-5 sm:h-4 sm:w-4" />
+            <span class="hidden sm:inline">退出</span>
+          </button>
         </div>
       </div>
-    </nav>
-    <main :class="isLoginPage ? '' : 'max-w-7xl mx-auto py-6 px-4 pt-20'">
+    </header>
+
+    <main :class="isLoginPage ? '' : 'mx-auto max-w-7xl px-4 pb-10 pt-24'">
       <router-view />
     </main>
+
+    <ToastHost />
+    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ConfirmDialog from './components/ConfirmDialog.vue'
+import Icon from './components/Icon.vue'
+import LogoMark from './components/LogoMark.vue'
+import ToastHost from './components/ToastHost.vue'
+import { useTheme } from './composables/useTheme'
+import { clearToken } from './utils/auth'
 
 const route = useRoute()
 const router = useRouter()
-const isDark = ref(false)
+const { isDark, toggle } = useTheme()
+
+const nav = [
+  { to: '/', label: '仪表盘', icon: 'home' },
+  { to: '/peers', label: '客户端', icon: 'users' },
+  { to: '/settings', label: '设置', icon: 'cog' }
+]
 
 const isLoginPage = computed(() => route.path === '/login')
 
-const toggleTheme = () => {
-  isDark.value = !isDark.value
-  if (isDark.value) {
-    document.documentElement.classList.add('dark')
-    localStorage.setItem('theme', 'dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-    localStorage.setItem('theme', 'light')
-  }
-}
-
 const logout = () => {
-  localStorage.removeItem('token')
+  clearToken()
   router.push('/login')
 }
-
-onMounted(() => {
-  const saved = localStorage.getItem('theme')
-  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
-})
 </script>
-
-<style scoped>
-.nav-link {
-  @apply px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700;
-}
-.router-link-active {
-  @apply bg-gray-100 text-blue-600 dark:bg-gray-700 dark:text-blue-400;
-}
-</style>

@@ -1,39 +1,58 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-    <Transition name="toast-center">
-      <div v-if="toast.show" class="fixed top-20 left-1/2 -translate-x-1/2 z-50">
-        <div class="rounded-lg shadow-lg p-4 flex items-center space-x-3 bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800">
-          <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <p class="font-medium text-red-800 dark:text-red-200">{{ toast.message }}</p>
-        </div>
+  <div class="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-10 dark:bg-gray-900">
+    <div class="card w-full max-w-md p-8">
+      <div class="mb-4 flex justify-center">
+        <LogoMark class="h-20 w-20" />
       </div>
-    </Transition>
+      <h1 class="mb-1 text-center text-2xl font-bold text-gray-900 dark:text-white">WireGuard UI</h1>
+      <p class="mb-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        {{ initialized ? '登录后管理你的 WireGuard 服务器和客户端' : '创建第一个管理员账户' }}
+      </p>
 
-    <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-full max-w-md">
-      <div class="flex justify-center mb-4">
-        <svg class="w-20 h-20" viewBox="0 0 310 310" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path fill="#88171a" d="m301.28 145.56s6.9396-145.56-153.04-145.56c-141.48 0-145.9 139.63-145.9 139.63s-20.811 160.37 149.16 160.37c163.02 0 149.78-154.44 149.78-154.44zm-197.8-50.863c30.017-18.364 68.366-7.1401 82.735 20.476 2.7233 5.2338 3.0694 13.291 1.3447 18.782-5.9546 18.956-20.014 29.587-39.312 34.103 5.6892-4.8707 10.218-10.394 11.659-18.025a26.402 26.402 0 0 0-4.5425-20.956 26.76 26.76 0 0 0-30.811-9.3892c-11.881 4.5111-18.389 15.354-17.216 28.683 1.0898 12.381 10.484 20.405 28.061 23.453-2.627 1.3904-4.6503 2.4144-6.6299 3.5172a63.918 63.918 0 0 0-20.544 17.868c-1.7839 2.4084-3.0104 2.6024-5.727 0.94116-35.338-21.61-37.609-75.844 0.98226-99.453zm-26.449 133.53c-5.6769 1.441-11.178 3.5742-16.981 5.4775 2.8385-19.151 25.265-36.788 44.23-34.776a48.881 48.881 0 0 0-9.242 25.893c-6.302 1.1606-12.241 1.9414-18.007 3.405zm120.79-186.98c5.6099 0.20612 11.23 0.12091 16.844 0.25378a29.052 29.052 0 0 1 4.1674 0.58069 40.607 40.607 0 0 1-4.2357 5.4332c-2.007 1.8701-4.2745 3.6986-7.1661 0.856-0.6955-0.68372-2.3386-0.52679-3.5487-0.54272-5.5823-0.07336-11.172-0.25177-16.746-0.04132a104.04 104.04 0 0 0-14.425 1.473c-0.89368 0.16046-2.2299 3.1315-1.8191 4.227 0.9693 2.5853 2.3833 5.4363 4.4779 7.0898 7.7403 6.11 15.972 11.596 23.748 17.664 7.556 5.8966 14.589 12.358 18.875 21.253 5.5843 11.59 5.747 23.743 3.3388 35.95-4.0203 20.378-14.333 37.261-31.032 49.524-6.7288 4.941-15.06 7.7451-22.767 11.295-6.778 3.1225-13.755 5.8115-20.549 8.9008-12.249 5.5695-19.133 18.865-17.108 32.688 1.8585 12.685 12.987 23.271 25.735 25.456 15.292 2.6216 31.071-7.3163 34.812-22.86 4.2067-17.478-5.2898-33.083-23.065-37.813-0.78271-0.20831-1.5684-0.40552-3.2012-0.8269 4.7549-2.1245 8.8614-3.6381 12.653-5.7244q9.9213-5.4594 19.481-11.562c1.8742-1.199 2.8868-1.1996 4.4852 0.18225 12.225 10.57 19.518 23.718 21.563 39.839 3.3845 26.684-9.2471 51.198-33.072 63.762-36.86 19.439-81.965-2.6864-90.106-43.552-6.9738-35.003 17.73-66.754 47.462-72.884 12.787-2.6364 24.48-7.9596 33.57-17.807 5.8652-6.3541 8.7084-11.806 9.6772-14.266a39.565 39.565 0 0 0 2.7211-14.469 33.867 33.867 0 0 0-2.9654-12.398c-3.104-7.075-14.995-18.33-17.939-20.704l-28-21.921c-0.98761-0.81256-2.0994-0.75366-4.5079-0.59045-2.8611 0.19391-10.175 0.59888-13.331-0.22815 2.553-1.9321 9.5132-4.7451 12.502-7.007-9.0734-6.1297-19.43-3.9158-28.941-5.7461 2.1992-4.0959 13.081-10.39 19.27-11.091a91.533 91.533 0 0 0-1.6876-10.281c-0.37781-1.3917-1.9312-2.7408-3.2864-3.5355-3.286-1.9267-6.7694-3.5167-10.549-5.4327a21.936 21.936 0 0 1 11.332-3.5055 42.316 42.316 0 0 1 11.348 1.1056c6.7422 1.5405 12.124 0.53491 17.488-4.048-4.222-1.7002-8.4435-3.2535-12.538-5.0907a123.04 123.04 0 0 1-11.779-6.1583c10.622 1.4755 20.896 5.4585 31.757 4.0034q0.1387-0.74048 0.27728-1.4809c-8.1194-1.8899-16.239-3.7798-25.229-5.8724 15.04-1.3769 29.042-1.604 42.301 4.8541 3.731 1.8173 7.6348 3.3215 11.211 5.3972 1.7443 1.0124 2.9186 3.0078 4.3496 4.5594 1.1366 1.2325 2.0495 2.8837 3.446 3.6264 5.3 2.8184 11.134 2.9291 17.078 2.7879 0.04443-0.67694 0.08606-1.3114 0.1308-1.9933 5.9821 1.8693 12.715 8.7679 12.704 13.806-9.6911 0-19.374-0.037-29.056 0.05389-1.0348 0.0097-2.0626 0.76563-3.0936 1.1754 0.97986 0.57067 1.9428 1.5994 2.9423 1.6362z"/>
-          <path fill="#88171a" d="m185.32 26.906a1.4806 1.4806 0 0 0-0.18927 2.3686 2.2326 2.2326 0 0 0 3.0724 0.8219c0.9328-0.47052 1.8478-0.97137 2.975-1.5665-0.9079-0.775-1.6362-1.4148-2.3857-2.0324-1.318-1.086-2.411-0.40386-3.4724 0.40833z"/>
-        </svg>
-      </div>
-      <h1 class="text-2xl font-bold text-center mb-6 dark:text-white">WireGuard UI</h1>
-
-      <div v-if="!initialized" class="mb-4 p-3 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded">
+      <div
+        v-if="!initialized"
+        class="mb-4 rounded-md bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+      >
         首次使用，请创建管理员账户（密码至少 8 位，不要使用 admin）
+      </div>
+
+      <div
+        v-if="error"
+        role="alert"
+        class="mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200"
+      >
+        <Icon name="x-circle" class="mt-0.5 h-4 w-4" />
+        <span>{{ error }}</span>
       </div>
 
       <form @submit.prevent="submit">
         <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
-          <input v-model="form.username" type="text" class="input-field" required />
+          <label class="field-label" for="username">用户名</label>
+          <input
+            id="username"
+            ref="usernameInput"
+            v-model.trim="form.username"
+            type="text"
+            name="username"
+            autocomplete="username"
+            class="input-field"
+            required
+          />
         </div>
         <div class="mb-6">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-          <input v-model="form.password" type="password" class="input-field" :minlength="initialized ? 1 : 8" required />
+          <label class="field-label" for="password">密码</label>
+          <SecretField
+            id="password"
+            v-model="form.password"
+            as-password
+            name="password"
+            :autocomplete="initialized ? 'current-password' : 'new-password'"
+            :minlength="initialized ? undefined : 8"
+            required
+          />
         </div>
-        <button type="submit" class="w-full btn-primary">
+        <button type="submit" class="btn-primary w-full" :disabled="loading">
+          <span v-if="loading" class="spinner"></span>
           {{ initialized ? '登录' : '创建账户' }}
         </button>
       </form>
@@ -42,49 +61,66 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
+import Icon from '../components/Icon.vue'
+import LogoMark from '../components/LogoMark.vue'
+import SecretField from '../components/SecretField.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils/api'
+import { setToken } from '../utils/auth'
 
+const route = useRoute()
 const router = useRouter()
+const toast = useToast()
+
 const initialized = ref(true)
 const form = ref({ username: '', password: '' })
-const toast = ref({ show: false, message: '' })
+const error = ref('')
+const loading = ref(false)
+const usernameInput = ref(null)
 
-const showToast = (message) => {
-  toast.value = { show: true, message }
-  setTimeout(() => { toast.value.show = false }, 3000)
+// Only follow redirects to pages inside this app.
+const redirectTarget = () => {
+  const r = route.query.redirect
+  return typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') ? r : '/'
 }
 
 onMounted(async () => {
-  const saved = localStorage.getItem('theme')
-  if (saved === 'dark') {
-    document.documentElement.classList.add('dark')
-  }
-
   try {
-    const res = await axios.get('/api/init')
+    const res = await axios.get('/api/init', { timeout: 10000 })
     initialized.value = res.data.initialized
   } catch (e) {
-    console.error(e)
+    error.value = errorMessage(e, '无法获取初始化状态')
   }
+  usernameInput.value?.focus()
 })
 
 const submit = async () => {
+  error.value = ''
+  loading.value = true
   try {
-    const url = initialized.value ? '/api/login' : '/api/register'
-    const res = await axios.post(url, form.value)
+    const res = await axios.post(initialized.value ? '/api/login' : '/api/register', form.value)
 
     if (!initialized.value) {
       initialized.value = true
       form.value.password = ''
+      toast.success('管理员账户已创建，请登录')
       return
     }
 
-    localStorage.setItem('token', res.data.token)
-    router.push('/')
+    setToken(res.data.token)
+    router.push(redirectTarget())
   } catch (e) {
-    showToast(e.response?.data?.error || '操作失败')
+    const data = e.response?.data
+    let msg = errorMessage(e, '操作失败')
+    if (typeof data?.remaining_attempts === 'number' && data.remaining_attempts <= 5) {
+      msg += `（还可尝试 ${data.remaining_attempts} 次）`
+    }
+    error.value = msg
+  } finally {
+    loading.value = false
   }
 }
 </script>

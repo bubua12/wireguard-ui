@@ -1,198 +1,311 @@
 <template>
-  <div>
-    <Transition name="toast">
-      <div v-if="toast.show" class="fixed top-4 right-4 z-50 max-w-sm">
-        <div class="rounded-lg shadow-lg p-4 bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800">
-          <p class="text-yellow-800 dark:text-yellow-200">{{ toast.message }}</p>
-        </div>
+  <div class="space-y-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">客户端管理</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          共 {{ peers.length }} 个客户端，{{ counts.online }} 个在线
+        </p>
       </div>
-    </Transition>
-
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-      <h1 class="text-2xl font-bold dark:text-white">客户端管理</h1>
-      <div class="flex items-center gap-3 w-full sm:w-auto">
-        <div class="relative flex-1 sm:flex-none">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z"/>
-          </svg>
+      <div class="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        <div class="relative min-w-0 flex-1 sm:flex-none">
+          <Icon name="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             v-model="search"
             type="search"
-            placeholder="搜索名称或 IP"
-            class="input-field input-field-icon w-full sm:w-56"
+            placeholder="搜索名称、IP 或公钥"
+            aria-label="搜索客户端"
+            class="input-field input-field-icon w-full sm:w-64"
           />
         </div>
-        <button @click="showAddModal = true" class="btn-primary whitespace-nowrap">添加客户端</button>
+        <button
+          type="button"
+          class="btn-secondary"
+          :title="showAddresses ? '隐藏客户端来源地址' : '显示客户端来源地址'"
+          :aria-pressed="showAddresses"
+          @click="showAddresses = !showAddresses"
+        >
+          <Icon :name="showAddresses ? 'eye-off' : 'eye'" class="h-4 w-4" />
+          <span class="hidden md:inline">{{ showAddresses ? '隐藏地址' : '显示地址' }}</span>
+        </button>
+        <button type="button" class="btn-primary" :disabled="noServer" @click="openAdd">
+          <Icon name="plus" class="h-4 w-4" />添加客户端
+        </button>
       </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow overflow-hidden dark:bg-gray-800">
-      <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-          <tr>
-            <th class="px-6 py-3 text-left">
-              <button type="button" class="sort-btn" @click="toggleSort('name')">
-                名称
-                <SortCarets :active="sortKey === 'name'" :order="sortOrder" />
-              </button>
-            </th>
-            <th class="px-6 py-3 text-left">
-              <button type="button" class="sort-btn" @click="toggleSort('ip')">
-                IP地址
-                <SortCarets :active="sortKey === 'ip'" :order="sortOrder" />
-              </button>
-            </th>
-            <th class="px-6 py-3 text-left">
-              <button type="button" class="sort-btn" @click="toggleSort('status')">
-                状态
-                <SortCarets :active="sortKey === 'status'" :order="sortOrder" />
-              </button>
-            </th>
-            <th class="px-6 py-3 text-left">
-              <button type="button" class="sort-btn" @click="toggleSort('traffic')">
-                流量 ↓ / ↑
-                <SortCarets :active="sortKey === 'traffic'" :order="sortOrder" />
-              </button>
-            </th>
-            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase dark:text-gray-300">操作</th>
-          </tr>
-        </thead>
-        <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-          <tr v-if="sortedPeers.length === 0">
-            <td colspan="5" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
-              {{ emptyMessage }}
-            </td>
-          </tr>
-          <tr v-for="peer in pagedPeers" :key="peer.id">
-            <td class="px-6 py-4 whitespace-nowrap dark:text-white">
-              <div class="flex items-center">
-                <span class="status-dot" :class="isOnline(peer.public_key) ? 'status-online' : 'status-offline'"></span>
-                {{ peer.name }}
-                <span
-                  v-if="!peer.has_private_key"
-                  class="badge-import ml-2"
-                  title="从系统配置导入，没有私钥，无法下载或扫码"
-                >导入</span>
-              </div>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <span :class="peer.enabled ? 'badge-green' : 'badge-gray'">
-                {{ peer.enabled ? '已启用' : '已禁用' }}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <button
-                type="button"
-                class="text-left text-sm tabular-nums text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400"
-                title="累计流量，点击查看按天明细"
-                @click="openTraffic(peer)"
-              >
-                {{ formatBytes(peerRx(peer)) }} / {{ formatBytes(peerTx(peer)) }}
-              </button>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-              <div class="flex justify-end space-x-1">
-                <button @click="editPeer(peer)" class="btn-icon btn-icon-yellow" title="编辑">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                  </svg>
-                </button>
-                <button @click="confirmToggle(peer)" class="btn-icon" :class="peer.enabled ? 'btn-icon-blue' : 'btn-icon-green'" :title="peer.enabled ? '禁用' : '启用'">
-                  <svg v-if="peer.enabled" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                  </svg>
-                  <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                </button>
-                <button @click="downloadConfig(peer)" class="btn-icon btn-icon-green disabled:opacity-40" title="下载配置" :disabled="!peer.has_private_key">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                  </svg>
-                </button>
-                <button @click="showQR(peer)" class="btn-icon btn-icon-purple disabled:opacity-40" title="二维码" :disabled="!peer.has_private_key">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
-                  </svg>
-                </button>
-                <button @click="confirmDelete(peer)" class="btn-icon btn-icon-red" title="删除">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                  </svg>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
-
-      <div v-if="sortedPeers.length > 0" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-        <div class="text-sm text-gray-500 dark:text-gray-400">
-          共 {{ sortedPeers.length }} 条，第 {{ page }} / {{ totalPages }} 页
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <select v-model.number="pageSize" class="h-8 px-2 text-sm rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
-            <option :value="10">10 条/页</option>
-            <option :value="20">20 条/页</option>
-            <option :value="50">50 条/页</option>
-          </select>
-          <button type="button" class="pager-btn" :disabled="page <= 1" @click="page = 1">«</button>
-          <button type="button" class="pager-btn" :disabled="page <= 1" @click="page -= 1">‹</button>
-          <button
-            v-for="item in pageItems"
-            :key="item.key"
-            type="button"
-            class="pager-btn"
-            :class="{ 'pager-btn-active': item.current }"
-            :disabled="item.ellipsis"
-            @click="!item.ellipsis && (page = item.num)"
-          >{{ item.label }}</button>
-          <button type="button" class="pager-btn" :disabled="page >= totalPages" @click="page += 1">›</button>
-          <button type="button" class="pager-btn" :disabled="page >= totalPages" @click="page = totalPages">»</button>
-        </div>
-      </div>
+    <div v-if="noServer" class="card p-10 text-center">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">还没有配置服务器</h2>
+      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">需要先创建服务器（或导入现有配置），才能添加客户端。</p>
+      <router-link to="/settings" class="btn-primary mt-5">前往设置</router-link>
     </div>
 
-    <div v-if="showAddModal" class="modal-overlay">
-      <div class="modal-content">
-        <h3 class="text-lg font-semibold mb-4 dark:text-white">添加客户端</h3>
-        <div v-if="addError" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200">
+    <template v-else>
+      <div class="flex flex-wrap gap-2" role="group" aria-label="状态筛选">
+        <button
+          v-for="f in filters"
+          :key="f.key"
+          type="button"
+          class="chip"
+          :class="{ 'chip-active': filter === f.key }"
+          :aria-pressed="filter === f.key"
+          @click="filter = f.key"
+        >
+          {{ f.label }}
+          <span class="tabular-nums opacity-75">{{ counts[f.key] }}</span>
+        </button>
+      </div>
+
+      <div class="card overflow-hidden">
+        <!-- 桌面端：表格 -->
+        <div class="hidden overflow-x-auto md:block">
+          <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead class="bg-gray-50 dark:bg-gray-700/60">
+              <tr>
+                <th class="th">
+                  <button type="button" class="sort-btn" @click="toggleSort('name')">
+                    名称 <SortCarets :active="sortKey === 'name'" :order="sortOrder" />
+                  </button>
+                </th>
+                <th class="th">
+                  <button type="button" class="sort-btn" @click="toggleSort('ip')">
+                    IP 地址 <SortCarets :active="sortKey === 'ip'" :order="sortOrder" />
+                  </button>
+                </th>
+                <th class="th">
+                  <button type="button" class="sort-btn" @click="toggleSort('status')">
+                    状态 <SortCarets :active="sortKey === 'status'" :order="sortOrder" />
+                  </button>
+                </th>
+                <th class="th">
+                  <button type="button" class="sort-btn" @click="toggleSort('handshake')">
+                    最近握手 <SortCarets :active="sortKey === 'handshake'" :order="sortOrder" />
+                  </button>
+                </th>
+                <th class="th">
+                  <button type="button" class="sort-btn" title="下行 = 客户端下载，上行 = 客户端上传" @click="toggleSort('traffic')">
+                    流量 ↓ / ↑ <SortCarets :active="sortKey === 'traffic'" :order="sortOrder" />
+                  </button>
+                </th>
+                <th class="th text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              <template v-if="loading">
+                <tr v-for="n in 5" :key="`sk-${n}`">
+                  <td v-for="c in 6" :key="c" class="px-4 py-4"><div class="skeleton h-5 w-full max-w-[8rem]"></div></td>
+                </tr>
+              </template>
+              <tr v-else-if="sortedPeers.length === 0">
+                <td colspan="6" class="px-6 py-12 text-center">
+                  <p class="text-gray-500 dark:text-gray-400">{{ emptyMessage }}</p>
+                  <button v-if="peers.length === 0" type="button" class="btn-primary mt-4" @click="openAdd">添加第一个客户端</button>
+                  <button v-else type="button" class="btn-secondary mt-4" @click="clearFilters">清除筛选</button>
+                </td>
+              </tr>
+              <tr v-for="peer in pagedPeers" :key="peer.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-700/30">
+                <td class="whitespace-nowrap px-4 py-3.5 text-gray-900 dark:text-white">
+                  <div class="flex items-center">
+                    <span class="status-dot" :class="dotClass(peer)"></span>
+                    <span class="max-w-[16rem] truncate font-medium" :title="peer.name">{{ peer.name }}</span>
+                    <span v-if="!peer.has_private_key" class="badge-import ml-2" title="从系统配置导入，没有私钥，无法下载或扫码">导入</span>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5 text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
+                <td class="whitespace-nowrap px-4 py-3.5">
+                  <span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5 text-sm">
+                  <div class="text-gray-700 dark:text-gray-200" :title="handshakeTitle(peer)">{{ handshakeText(peer) }}</div>
+                  <div v-if="endpointOf(peer)" class="text-xs text-gray-400 dark:text-gray-500" :class="{ 'select-none tracking-wider': !showAddresses }">
+                    {{ showAddresses ? endpointOf(peer) : '••••••••' }}
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5">
+                  <button
+                    type="button"
+                    class="text-left text-sm tabular-nums text-gray-700 hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400"
+                    title="累计流量（下行 / 上行），点击查看按天明细"
+                    @click="openTraffic(peer)"
+                  >
+                    {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
+                  </button>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5 text-sm">
+                  <PeerActions
+                    :peer="peer"
+                    @edit="openEdit(peer)"
+                    @toggle="toggleEnabled(peer)"
+                    @download="downloadConfig(peer)"
+                    @config="openConfig(peer)"
+                    @delete="deletePeer(peer)"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 手机端：卡片 -->
+        <div class="divide-y divide-gray-100 md:hidden dark:divide-gray-700">
+          <template v-if="loading">
+            <div v-for="n in 3" :key="`skc-${n}`" class="space-y-2 p-4">
+              <div class="skeleton h-5 w-1/2"></div>
+              <div class="skeleton h-4 w-1/3"></div>
+            </div>
+          </template>
+          <div v-else-if="sortedPeers.length === 0" class="px-4 py-10 text-center">
+            <p class="text-gray-500 dark:text-gray-400">{{ emptyMessage }}</p>
+            <button v-if="peers.length === 0" type="button" class="btn-primary mt-4" @click="openAdd">添加第一个客户端</button>
+            <button v-else type="button" class="btn-secondary mt-4" @click="clearFilters">清除筛选</button>
+          </div>
+          <div v-for="peer in pagedPeers" :key="peer.id" class="space-y-3 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center">
+                <span class="status-dot" :class="dotClass(peer)"></span>
+                <span class="truncate font-medium text-gray-900 dark:text-white">{{ peer.name }}</span>
+                <span v-if="!peer.has_private_key" class="badge-import ml-2">导入</span>
+              </div>
+              <span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span>
+            </div>
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <dt class="text-gray-500 dark:text-gray-400">IP 地址</dt>
+              <dd class="text-right text-gray-800 dark:text-gray-200">{{ peer.allowed_ips }}</dd>
+              <dt class="text-gray-500 dark:text-gray-400">最近握手</dt>
+              <dd class="text-right text-gray-800 dark:text-gray-200">{{ handshakeText(peer) }}</dd>
+              <template v-if="endpointOf(peer)">
+                <dt class="text-gray-500 dark:text-gray-400">来源地址</dt>
+                <dd class="text-right text-gray-800 dark:text-gray-200" :class="{ 'select-none tracking-wider': !showAddresses }">
+                  {{ showAddresses ? endpointOf(peer) : '••••••••' }}
+                </dd>
+              </template>
+              <dt class="text-gray-500 dark:text-gray-400">流量 ↓ / ↑</dt>
+              <dd class="text-right">
+                <button type="button" class="tabular-nums text-blue-600 dark:text-blue-400" @click="openTraffic(peer)">
+                  {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
+                </button>
+              </dd>
+            </dl>
+            <PeerActions
+              :peer="peer"
+              @edit="openEdit(peer)"
+              @toggle="toggleEnabled(peer)"
+              @download="downloadConfig(peer)"
+              @config="openConfig(peer)"
+              @delete="deletePeer(peer)"
+            />
+          </div>
+        </div>
+
+        <div v-if="sortedPeers.length > 0" class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+          <Pagination v-model:page="page" v-model:page-size="pageSize" :total="sortedPeers.length" :page-sizes="[10, 20, 50]" />
+        </div>
+      </div>
+    </template>
+
+    <!-- 添加客户端 -->
+    <Modal v-model="addOpen" title="添加客户端" persistent>
+      <form id="add-peer-form" class="space-y-4" @submit.prevent="addPeer">
+        <div v-if="addError" role="alert" class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200">
           {{ addError }}
         </div>
-        <input v-model="newPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
-        <input v-model="newPeerIP" type="text" placeholder="IP地址（选填，如 10.0.0.10/32）" class="input-field mb-4" />
-        <div class="flex justify-end space-x-2">
-          <button @click="closeAddModal" class="btn-secondary">取消</button>
-          <button @click="addPeer" class="btn-primary">添加</button>
+        <div>
+          <label class="field-label" for="add-name">客户端名称</label>
+          <input id="add-name" v-model="addForm.name" type="text" maxlength="64" placeholder="例如：张三的 iPhone" class="input-field" required />
         </div>
-      </div>
-    </div>
-
-    <div v-if="qrPeer" class="modal-overlay" @click.self="closeQR">
-      <div class="modal-content text-center">
-        <h3 class="text-lg font-semibold mb-4 dark:text-white">{{ qrPeer.name }}</h3>
-        <img v-if="qrCodeUrl" :src="qrCodeUrl" class="mx-auto" />
-        <div v-else class="py-8 text-gray-500">加载中...</div>
-        <button @click="closeQR" class="btn-secondary mt-4">关闭</button>
-      </div>
-    </div>
-
-    <div v-if="trafficPeer" class="modal-overlay" @click.self="closeTraffic">
-      <div class="modal-content-lg">
-        <h3 class="text-lg font-semibold mb-1 dark:text-white">{{ trafficPeer.name }} 流量明细</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">
-          累计 ↓ {{ formatBytes(trafficReport.rx) }} / ↑ {{ formatBytes(trafficReport.tx) }}
-        </p>
-        <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">按天统计由后台采样累计，接口重启后不会丢失。</p>
-        <div v-if="trafficLoading" class="py-8 text-center text-gray-500">加载中...</div>
-        <div v-else-if="trafficReport.days.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
-          暂无按天数据，有流量后会自动记录。
+        <div>
+          <label class="field-label" for="add-ip">IP 地址（选填）</label>
+          <input
+            id="add-ip"
+            v-model="addForm.ip"
+            type="text"
+            :placeholder="nextIp ? `留空自动分配（下一个：${nextIp}）` : '例如 10.0.0.10/32'"
+            class="input-field"
+          />
+          <p v-if="nextIpReason && !nextIp" class="field-hint text-red-600 dark:text-red-400">{{ nextIpReason }}</p>
+          <p v-else class="field-hint">必须是服务器网段内的 x.x.x.x/32，留空则自动分配第一个空闲地址。</p>
         </div>
+      </form>
+      <template #footer>
+        <button type="button" class="btn-secondary" @click="addOpen = false">取消</button>
+        <button type="submit" form="add-peer-form" class="btn-primary" :disabled="adding || !addForm.name.trim()">
+          <span v-if="adding" class="spinner"></span>添加
+        </button>
+      </template>
+    </Modal>
+
+    <!-- 编辑客户端 -->
+    <Modal v-model="editOpen" title="编辑客户端" persistent>
+      <form id="edit-peer-form" class="space-y-4" @submit.prevent="savePeer">
+        <div v-if="editError" role="alert" class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200">
+          {{ editError }}
+        </div>
+        <div>
+          <label class="field-label" for="edit-name">客户端名称</label>
+          <input id="edit-name" v-model="editForm.name" type="text" maxlength="64" class="input-field" required />
+        </div>
+        <div>
+          <label class="field-label" for="edit-ip">IP 地址</label>
+          <input id="edit-ip" v-model="editForm.ip" type="text" class="input-field" required />
+          <p v-if="ipChanged && editing?.has_private_key" class="field-hint text-amber-600 dark:text-amber-400">
+            修改 IP 后，这个客户端必须重新下载配置或重新扫码，旧配置将无法使用。
+          </p>
+          <p v-else class="field-hint">服务器网段内的 x.x.x.x/32。</p>
+        </div>
+        <div>
+          <label class="field-label" for="edit-keepalive">保活间隔（秒）</label>
+          <input id="edit-keepalive" v-model.number="editForm.keepalive" type="number" min="0" max="65535" class="input-field" />
+          <p class="field-hint">写入客户端配置的 PersistentKeepalive；0 表示关闭，位于 NAT 后的设备建议 25。修改后需重新下载配置才会生效。</p>
+        </div>
+      </form>
+      <template #footer>
+        <button type="button" class="btn-secondary" @click="editOpen = false">取消</button>
+        <button type="submit" form="edit-peer-form" class="btn-primary" :disabled="saving">
+          <span v-if="saving" class="spinner"></span>保存
+        </button>
+      </template>
+    </Modal>
+
+    <!-- 二维码 / 配置 -->
+    <Modal v-model="configOpen" :title="configPeer?.name || ''">
+      <div class="text-center">
+        <div v-if="configLoading" class="py-16 text-gray-500 dark:text-gray-400"><span class="spinner mr-2"></span>加载中...</div>
+        <img v-else-if="qrUrl" :src="qrUrl" alt="客户端配置二维码" class="mx-auto h-60 w-60 rounded-lg bg-white p-2 ring-1 ring-gray-200 dark:ring-gray-600" />
+        <p v-if="!configLoading && qrUrl" class="mt-3 text-sm text-gray-500 dark:text-gray-400">用 WireGuard 手机 App 扫描二维码即可导入</p>
+      </div>
+      <div v-if="configText" class="mt-4">
+        <button type="button" class="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400" @click="showConfigText = !showConfigText">
+          <Icon name="document" class="h-4 w-4" />{{ showConfigText ? '隐藏配置内容' : '查看配置内容（含私钥）' }}
+        </button>
+        <pre v-if="showConfigText" class="mt-2 max-h-60 overflow-auto rounded-md bg-gray-50 p-3 text-left text-xs leading-relaxed text-gray-800 dark:bg-gray-900/60 dark:text-gray-200">{{ configText }}</pre>
+      </div>
+      <template #footer>
+        <button type="button" class="btn-secondary" :disabled="!configText" @click="copyConfig">
+          <Icon name="copy" class="h-4 w-4" />复制配置
+        </button>
+        <button type="button" class="btn-primary" :disabled="!configText" @click="saveConfigFile">
+          <Icon name="download" class="h-4 w-4" />下载 .conf
+        </button>
+      </template>
+    </Modal>
+
+    <!-- 流量明细 -->
+    <Modal v-model="trafficOpen" size="xl">
+      <template #header>
+        <div class="min-w-0">
+          <h3 class="truncate text-lg font-semibold text-gray-900 dark:text-white">{{ trafficPeer?.name }} 流量明细</h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            累计 ↓ {{ formatBytes(downOf(trafficReport)) }} / ↑ {{ formatBytes(upOf(trafficReport)) }}
+          </p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">按天统计由后台每分钟采样累计，接口重启后不会丢失；只保留最近 90 天。</p>
+        </div>
+      </template>
+      <div v-if="trafficLoading" class="py-10 text-center text-gray-500"><span class="spinner mr-2"></span>加载中...</div>
+      <template v-else>
+        <TrafficChart :days="trafficChartDays" :height="160" />
+        <div v-if="trafficReport.days.length === 0" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">暂无按天数据，有流量后会自动记录。</div>
         <template v-else>
-          <table class="min-w-full text-sm">
+          <table class="mt-4 min-w-full text-sm">
             <thead>
               <tr class="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <th class="py-2 pr-4">日期</th>
@@ -203,219 +316,221 @@
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
               <tr v-for="row in pagedTrafficDays" :key="row.day" class="dark:text-gray-200">
-                <td class="py-2 pr-4 whitespace-nowrap">{{ row.day }}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.rx) }}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(row.tx) }}</td>
-                <td class="py-2 text-right tabular-nums">{{ formatBytes((Number(row.rx) || 0) + (Number(row.tx) || 0)) }}</td>
+                <td class="whitespace-nowrap py-2 pr-4">{{ row.day }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(downOf(row)) }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ formatBytes(upOf(row)) }}</td>
+                <td class="py-2 text-right tabular-nums">{{ formatBytes(downOf(row) + upOf(row)) }}</td>
               </tr>
             </tbody>
           </table>
-          <div v-if="trafficReport.days.length > trafficPageSize" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <div class="text-xs text-gray-500 dark:text-gray-400">
-              共 {{ trafficReport.days.length }} 天，第 {{ trafficPage }} / {{ trafficTotalPages }} 页
-            </div>
-            <div class="flex items-center gap-1 flex-wrap">
-              <button type="button" class="pager-btn" :disabled="trafficPage <= 1" @click="trafficPage = 1">«</button>
-              <button type="button" class="pager-btn" :disabled="trafficPage <= 1" @click="trafficPage -= 1">‹</button>
-              <button
-                v-for="item in trafficPageItems"
-                :key="item.key"
-                type="button"
-                class="pager-btn"
-                :class="{ 'pager-btn-active': item.current }"
-                :disabled="item.ellipsis"
-                @click="!item.ellipsis && (trafficPage = item.num)"
-              >{{ item.label }}</button>
-              <button type="button" class="pager-btn" :disabled="trafficPage >= trafficTotalPages" @click="trafficPage += 1">›</button>
-              <button type="button" class="pager-btn" :disabled="trafficPage >= trafficTotalPages" @click="trafficPage = trafficTotalPages">»</button>
-            </div>
+          <div v-if="trafficReport.days.length > trafficPageSize" class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            <Pagination v-model:page="trafficPage" :page-size="trafficPageSize" :total="trafficReport.days.length" unit="天" />
           </div>
         </template>
-        <div class="flex justify-end mt-4">
-          <button @click="closeTraffic" class="btn-secondary">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="editingPeer" class="modal-overlay">
-      <div class="modal-content">
-        <h3 class="text-lg font-semibold mb-4 dark:text-white">编辑客户端</h3>
-        <input v-model="editPeerName" type="text" placeholder="客户端名称" class="input-field mb-4" />
-        <div class="flex justify-end space-x-2">
-          <button @click="editingPeer = null" class="btn-secondary">取消</button>
-          <button @click="savePeer" class="btn-primary">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="confirmModal.show" class="modal-overlay" @click.self="confirmModal.show = false">
-      <div class="modal-content">
-        <div class="flex items-center mb-4">
-          <div class="w-10 h-10 rounded-full flex items-center justify-center mr-3" :class="confirmModal.type === 'danger' ? 'bg-red-100 dark:bg-red-900' : 'bg-yellow-100 dark:bg-yellow-900'">
-            <svg class="w-6 h-6" :class="confirmModal.type === 'danger' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-            </svg>
-          </div>
-          <h3 class="text-lg font-semibold dark:text-white">{{ confirmModal.title }}</h3>
-        </div>
-        <p class="text-gray-600 dark:text-gray-300 mb-6 ml-13">{{ confirmModal.message }}</p>
-        <div class="flex justify-end space-x-2">
-          <button @click="confirmModal.show = false" class="btn-secondary">取消</button>
-          <button @click="confirmModal.onConfirm" :class="confirmModal.type === 'danger' ? 'btn-danger' : 'btn-warning'">
-            {{ confirmModal.confirmText }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #footer>
+        <button type="button" class="btn-secondary" @click="trafficOpen = false">关闭</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import axios from 'axios'
+import Icon from '../components/Icon.vue'
+import Modal from '../components/Modal.vue'
+import Pagination from '../components/Pagination.vue'
+import PeerActions from '../components/PeerActions.vue'
 import SortCarets from '../components/SortCarets.vue'
+import TrafficChart from '../components/TrafficChart.vue'
+import { confirm } from '../composables/useConfirm'
+import { usePolling } from '../composables/usePolling'
+import { useToast } from '../composables/useToast'
+import { errorMessage, errorMessageAsync } from '../utils/api'
+import {
+  copyText,
+  downOf,
+  fillDays,
+  formatAge,
+  formatBytes,
+  formatDateTime,
+  ipToNum,
+  saveBlob,
+  upOf
+} from '../utils/format'
+
+const toast = useToast()
 
 const peers = ref([])
 const peerStatus = ref({})
-const statusTimer = ref(null)
+const loading = ref(true)
+const noServer = ref(false)
 const search = ref('')
+const filter = ref('all')
 const sortKey = ref('')
 const sortOrder = ref('asc')
 const page = ref(1)
 const pageSize = ref(10)
-const trafficPeer = ref(null)
-const trafficLoading = ref(false)
-const trafficReport = ref({ rx: 0, tx: 0, days: [] })
-const trafficPage = ref(1)
-const trafficPageSize = 10
-const showAddModal = ref(false)
-const newPeerName = ref('')
-const newPeerIP = ref('')
-const addError = ref('')
-const qrPeer = ref(null)
-const qrCodeUrl = ref('')
-const editingPeer = ref(null)
-const editPeerName = ref('')
-const toast = ref({ show: false, message: '' })
-const confirmModal = ref({
-  show: false,
-  title: '',
-  message: '',
-  type: 'danger',
-  confirmText: '确定',
-  onConfirm: () => {}
-})
+const showAddresses = ref(false)
 
-const showToast = (message) => {
-  toast.value = { show: true, message }
-  setTimeout(() => { toast.value.show = false }, 4000)
-}
+const filters = [
+  { key: 'all', label: '全部' },
+  { key: 'online', label: '在线' },
+  { key: 'offline', label: '离线' },
+  { key: 'disabled', label: '已禁用' }
+]
 
 const noteWarning = (data) => {
-  if (data && data.warning) {
-    showToast('已保存到数据库，但未能应用到接口：' + data.warning)
-  }
+  if (data?.warning) toast.warning('已保存到数据库，但未能应用到接口：' + data.warning, 9000)
 }
+
+// ---------- loading ----------
 
 const loadPeers = async () => {
   try {
-    const res = await axios.get('/api/peers')
+    const res = await axios.get('/api/peers', { timeout: 10000 })
     peers.value = res.data || []
+    noServer.value = false
   } catch (e) {
-    console.error(e)
+    if (e.response?.status === 404) noServer.value = true
+    else if (loading.value) toast.error(errorMessage(e, '获取客户端列表失败'))
   }
 }
 
 const loadStatus = async () => {
+  if (noServer.value) return
   try {
-    const res = await axios.get('/api/peers/status')
-    const statusMap = {}
+    const res = await axios.get('/api/peers/status', { timeout: 10000 })
+    const map = {}
     for (const item of res.data || []) {
-      statusMap[item.public_key] = {
+      map[item.public_key] = {
         online: !!item.online,
         rx: Number(item.rx) || 0,
-        tx: Number(item.tx) || 0
+        tx: Number(item.tx) || 0,
+        endpoint: item.endpoint || '',
+        age: item.handshake_age == null ? null : Number(item.handshake_age),
+        handshake: Number(item.latest_handshake) || 0
       }
     }
-    peerStatus.value = statusMap
+    peerStatus.value = map
   } catch (e) {
-    console.error(e)
+    // transient; the next tick retries
   }
 }
 
-const isOnline = (publicKey) => {
-  return peerStatus.value[publicKey]?.online || false
+// The skeleton stays until the first status arrives too, so rows never flash
+// "offline / 0 B" for clients that are actually connected.
+usePolling(async () => {
+  await loadPeers()
+  await loadStatus()
+  loading.value = false
+}, 5000)
+
+// ---------- derived state ----------
+
+const statusOf = (peer) => peerStatus.value[peer.public_key]
+const isOnline = (peer) => !!statusOf(peer)?.online
+const endpointOf = (peer) => statusOf(peer)?.endpoint || ''
+
+const stateOf = (peer) => {
+  if (!peer.enabled) return 'disabled'
+  return isOnline(peer) ? 'online' : 'offline'
 }
 
-const peerRx = (peer) => peerStatus.value[peer.public_key]?.rx || 0
-const peerTx = (peer) => peerStatus.value[peer.public_key]?.tx || 0
+const dotClass = (peer) => `status-${stateOf(peer)}`
 
-const formatBytes = (n) => {
-  const v = Number(n) || 0
-  if (v < 1024) return v + ' B'
-  if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB'
-  if (v < 1024 * 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB'
-  return (v / 1024 / 1024 / 1024).toFixed(2) + ' GB'
-}
-
-const toggleSort = (key) => {
-  if (sortKey.value !== key) {
-    sortKey.value = key
-    sortOrder.value = 'asc'
-    return
+const statusBadge = (peer) => {
+  switch (stateOf(peer)) {
+    case 'online':
+      return { label: '在线', class: 'badge-green' }
+    case 'offline':
+      return { label: '离线', class: 'badge-gray' }
+    default:
+      return { label: '已禁用', class: 'badge-red' }
   }
-  if (sortOrder.value === 'asc') {
-    sortOrder.value = 'desc'
-    return
-  }
-  sortKey.value = ''
-  sortOrder.value = 'asc'
 }
 
-const ipToNum = (cidr) => {
-  const ip = (cidr || '').split('/')[0].split(',')[0].trim()
-  const parts = ip.split('.').map(n => parseInt(n, 10))
-  if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) return 0
-  return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]
+const handshakeText = (peer) => {
+  if (!peer.enabled) return '—'
+  const age = statusOf(peer)?.age
+  return age == null ? '—' : formatAge(age)
+}
+const handshakeTitle = (peer) => {
+  const ts = statusOf(peer)?.handshake
+  return ts ? formatDateTime(ts) : '尚未完成握手'
+}
+
+const counts = computed(() => {
+  const c = { all: peers.value.length, online: 0, offline: 0, disabled: 0 }
+  for (const p of peers.value) c[stateOf(p)]++
+  return c
+})
+
+const emptyMessage = computed(() => (peers.value.length === 0 ? '暂无客户端，点击右上角添加' : '没有匹配的客户端'))
+
+const clearFilters = () => {
+  search.value = ''
+  filter.value = 'all'
 }
 
 const filteredPeers = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return peers.value
   return peers.value.filter((p) => {
-    const name = (p.name || '').toLowerCase()
-    const ip = (p.allowed_ips || '').toLowerCase()
-    return name.includes(q) || ip.includes(q)
+    if (filter.value !== 'all' && stateOf(p) !== filter.value) return false
+    if (!q) return true
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.allowed_ips || '').toLowerCase().includes(q) ||
+      (p.public_key || '').toLowerCase().includes(q)
+    )
   })
 })
 
-const emptyMessage = computed(() => {
-  if (peers.value.length === 0) return '暂无客户端，点击右上角添加'
-  return '没有匹配的客户端'
-})
+const stateRank = { online: 2, offline: 1, disabled: 0 }
 
 const sortedPeers = computed(() => {
   const list = [...filteredPeers.value]
   if (!sortKey.value) return list
   const dir = sortOrder.value === 'asc' ? 1 : -1
+  const total = (p) => downOf(statusOf(p)) + upOf(statusOf(p))
+  const age = (p) => {
+    const a = statusOf(p)?.age
+    return a == null || a < 0 || !p.enabled ? Infinity : a
+  }
   return list.sort((a, b) => {
-    if (sortKey.value === 'name') {
-      return a.name.localeCompare(b.name) * dir
+    switch (sortKey.value) {
+      case 'name':
+        return a.name.localeCompare(b.name, 'zh-CN') * dir
+      case 'ip':
+        return (ipToNum(a.allowed_ips) - ipToNum(b.allowed_ips)) * dir
+      case 'status':
+        return (stateRank[stateOf(a)] - stateRank[stateOf(b)]) * dir
+      case 'handshake': {
+        const x = age(a)
+        const y = age(b)
+        if (x === y) return 0
+        return (x < y ? -1 : 1) * dir
+      }
+      case 'traffic':
+        return (total(a) - total(b)) * dir
+      default:
+        return 0
     }
-    if (sortKey.value === 'ip') {
-      return (ipToNum(a.allowed_ips) - ipToNum(b.allowed_ips)) * dir
-    }
-    if (sortKey.value === 'status') {
-      const va = a.enabled ? 1 : 0
-      const vb = b.enabled ? 1 : 0
-      return (va - vb) * dir
-    }
-    if (sortKey.value === 'traffic') {
-      return ((peerRx(a) + peerTx(a)) - (peerTx(b) + peerRx(b))) * dir
-    }
-    return 0
   })
 })
+
+const toggleSort = (key) => {
+  if (sortKey.value !== key) {
+    sortKey.value = key
+    sortOrder.value = 'asc'
+  } else if (sortOrder.value === 'asc') {
+    sortOrder.value = 'desc'
+  } else {
+    sortKey.value = ''
+    sortOrder.value = 'asc'
+  }
+}
 
 const totalPages = computed(() => Math.max(1, Math.ceil(sortedPeers.value.length / pageSize.value)))
 
@@ -424,222 +539,314 @@ const pagedPeers = computed(() => {
   return sortedPeers.value.slice(start, start + pageSize.value)
 })
 
-const pagerItems = (total, current) => {
-  const nums = new Set([1, total, current - 1, current, current + 1])
-  const list = [...nums].filter(n => n >= 1 && n <= total).sort((a, b) => a - b)
-  const items = []
-  let prev = 0
-  for (const n of list) {
-    if (prev && n - prev > 1) {
-      items.push({ key: `e-${n}`, ellipsis: true, label: '…' })
-    }
-    items.push({ key: `p-${n}`, num: n, label: String(n), current: n === current })
-    prev = n
+watch([sortedPeers, pageSize], () => {
+  if (page.value > totalPages.value) page.value = totalPages.value
+})
+watch([sortKey, sortOrder, search, filter], () => {
+  page.value = 1
+})
+
+// ---------- add ----------
+
+const addOpen = ref(false)
+const adding = ref(false)
+const addForm = ref({ name: '', ip: '' })
+const addError = ref('')
+const nextIp = ref('')
+const nextIpReason = ref('')
+
+const openAdd = async () => {
+  addForm.value = { name: '', ip: '' }
+  addError.value = ''
+  nextIp.value = ''
+  nextIpReason.value = ''
+  addOpen.value = true
+  try {
+    const res = await axios.get('/api/peers/next-ip', { timeout: 10000 })
+    nextIp.value = res.data?.ip || ''
+    nextIpReason.value = res.data?.reason || ''
+  } catch (e) {
+    // the hint is optional
   }
-  return items
 }
 
-const pageItems = computed(() => pagerItems(totalPages.value, page.value))
+const addPeer = async () => {
+  const name = addForm.value.name.trim()
+  if (!name || adding.value) return
+  const body = { name }
+  if (addForm.value.ip.trim()) body.allowed_ips = addForm.value.ip.trim()
 
+  adding.value = true
+  addError.value = ''
+  try {
+    const res = await axios.post('/api/peers', body)
+    addOpen.value = false
+    noteWarning(res.data)
+    toast.success(`已添加客户端「${name}」`)
+    await loadPeers()
+    await loadStatus()
+    clearFilters()
+    await nextTick()
+    const idx = sortedPeers.value.findIndex((p) => p.id === res.data.id)
+    if (idx >= 0) page.value = Math.floor(idx / pageSize.value) + 1
+  } catch (e) {
+    addError.value = errorMessage(e, '添加失败')
+  } finally {
+    adding.value = false
+  }
+}
+
+// ---------- edit ----------
+
+const editOpen = ref(false)
+const saving = ref(false)
+const editing = ref(null)
+const editForm = ref({ name: '', ip: '', keepalive: 25 })
+const editError = ref('')
+
+const ipChanged = computed(() => !!editing.value && editForm.value.ip.trim() !== editing.value.allowed_ips)
+
+const openEdit = (peer) => {
+  editing.value = peer
+  editForm.value = { name: peer.name, ip: peer.allowed_ips, keepalive: peer.persistent_keepalive }
+  editError.value = ''
+  editOpen.value = true
+}
+
+const savePeer = async () => {
+  const peer = editing.value
+  if (!peer || saving.value) return
+  const name = editForm.value.name.trim()
+  const ip = editForm.value.ip.trim()
+  const keepalive = editForm.value.keepalive === '' || editForm.value.keepalive == null ? 0 : Number(editForm.value.keepalive)
+  if (!name) {
+    editError.value = '名称不能为空'
+    return
+  }
+  if (!Number.isInteger(keepalive) || keepalive < 0 || keepalive > 65535) {
+    editError.value = '保活间隔应为 0-65535 的整数'
+    return
+  }
+
+  const body = {}
+  if (name !== peer.name) body.name = name
+  if (ip && ip !== peer.allowed_ips) body.allowed_ips = ip
+  if (keepalive !== peer.persistent_keepalive) body.persistent_keepalive = keepalive
+  if (Object.keys(body).length === 0) {
+    editOpen.value = false
+    return
+  }
+
+  saving.value = true
+  editError.value = ''
+  try {
+    const res = await axios.put(`/api/peers/${peer.id}`, body)
+    editOpen.value = false
+    noteWarning(res.data)
+    toast.success('已保存')
+    await loadPeers()
+  } catch (e) {
+    editError.value = errorMessage(e, '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+// ---------- enable / disable / delete ----------
+
+const toggleEnabled = async (peer) => {
+  if (peer.enabled) {
+    const ok = await confirm({
+      title: '禁用客户端',
+      message: `禁用「${peer.name}」后会立即把它从服务器移除并断开连接，之后可以随时重新启用。`,
+      type: 'warning',
+      confirmText: '禁用'
+    })
+    if (!ok) return
+  }
+  try {
+    const res = await axios.post(`/api/peers/${peer.id}/toggle`, { enabled: !peer.enabled })
+    noteWarning(res.data)
+    toast.success(peer.enabled ? `已禁用「${peer.name}」` : `已启用「${peer.name}」`)
+    await loadPeers()
+    await loadStatus()
+  } catch (e) {
+    toast.error(errorMessage(e, '操作失败'))
+  }
+}
+
+const deletePeer = async (peer) => {
+  const ok = await confirm({
+    title: '删除客户端',
+    message: `确定要删除「${peer.name}」吗？\n它的密钥和流量记录会一并删除，此操作不可恢复。`,
+    type: 'danger',
+    confirmText: '删除'
+  })
+  if (!ok) return
+  try {
+    const res = await axios.delete(`/api/peers/${peer.id}`)
+    noteWarning(res.data)
+    toast.success(`已删除「${peer.name}」`)
+    await loadPeers()
+  } catch (e) {
+    toast.error(errorMessage(e, '删除失败'))
+  }
+}
+
+// ---------- config / QR ----------
+
+const configOpen = ref(false)
+const configPeer = ref(null)
+const configLoading = ref(false)
+const qrUrl = ref('')
+const configText = ref('')
+const showConfigText = ref(false)
+
+const revokeQr = () => {
+  if (qrUrl.value) {
+    window.URL.revokeObjectURL(qrUrl.value)
+    qrUrl.value = ''
+  }
+}
+
+// Bumped whenever the modal opens or closes so a slow response for a modal that
+// is gone (or was reopened for another client) is dropped.
+let configRequest = 0
+
+// Secrets are wiped only after the fade-out so the content does not vanish
+// while the modal is still visible.
+const clearConfig = () => {
+  if (configOpen.value) return
+  configText.value = ''
+  showConfigText.value = false
+  revokeQr()
+}
+
+const filenameFrom = (res, fallback) => {
+  const m = /filename="?([^";]+)"?/.exec(res.headers?.['content-disposition'] || '')
+  return m ? m[1] : fallback
+}
+
+const fetchConfig = (peer) =>
+  axios.get(`/api/peers/${peer.id}/config`, { responseType: 'text', transformResponse: [(d) => d] })
+
+const openConfig = async (peer) => {
+  if (!peer.has_private_key) {
+    toast.warning('导入的客户端没有私钥，无法生成二维码')
+    return
+  }
+  const request = ++configRequest
+  revokeQr()
+  configText.value = ''
+  showConfigText.value = false
+  configPeer.value = peer
+  configLoading.value = true
+  configOpen.value = true
+  try {
+    const [qr, cfg] = await Promise.all([
+      axios.get(`/api/peers/${peer.id}/qrcode`, { responseType: 'blob' }),
+      fetchConfig(peer)
+    ])
+    if (request !== configRequest) return
+    qrUrl.value = window.URL.createObjectURL(qr.data)
+    configText.value = cfg.data
+  } catch (e) {
+    if (request !== configRequest) return
+    toast.error(await errorMessageAsync(e, '获取配置失败'))
+    configOpen.value = false
+  } finally {
+    if (request === configRequest) configLoading.value = false
+  }
+}
+
+const copyConfig = async () => {
+  if (await copyText(configText.value)) toast.success('配置已复制到剪贴板')
+  else toast.error('复制失败，请展开配置内容后手动复制')
+}
+
+const saveConfigFile = () => {
+  if (!configPeer.value || !configText.value) return
+  saveBlob(new Blob([configText.value], { type: 'text/plain;charset=utf-8' }), `${configPeer.value.name}.conf`)
+}
+
+const downloadConfig = async (peer) => {
+  if (!peer.has_private_key) {
+    toast.warning('导入的客户端没有私钥，无法生成配置')
+    return
+  }
+  try {
+    const res = await fetchConfig(peer)
+    saveBlob(new Blob([res.data], { type: 'text/plain;charset=utf-8' }), filenameFrom(res, `${peer.name}.conf`))
+  } catch (e) {
+    toast.error(await errorMessageAsync(e, '下载配置失败'))
+  }
+}
+
+// ---------- traffic ----------
+
+const trafficOpen = ref(false)
+const trafficPeer = ref(null)
+const trafficLoading = ref(false)
+const trafficReport = ref({ rx: 0, tx: 0, days: [], today: '' })
+const trafficPage = ref(1)
+const trafficPageSize = 10
+
+const trafficChartDays = computed(() => fillDays(trafficReport.value.days, 14, trafficReport.value.today))
 const trafficTotalPages = computed(() => Math.max(1, Math.ceil(trafficReport.value.days.length / trafficPageSize)))
-
 const pagedTrafficDays = computed(() => {
   const start = (trafficPage.value - 1) * trafficPageSize
   return trafficReport.value.days.slice(start, start + trafficPageSize)
 })
 
-const trafficPageItems = computed(() => pagerItems(trafficTotalPages.value, trafficPage.value))
-
-watch([sortedPeers, pageSize], () => {
-  if (page.value > totalPages.value) {
-    page.value = totalPages.value
-  }
+watch(trafficTotalPages, (n) => {
+  if (trafficPage.value > n) trafficPage.value = n
 })
 
-watch([sortKey, sortOrder, search], () => {
-  page.value = 1
-})
+let trafficRequest = 0
 
-watch(() => trafficReport.value.days.length, () => {
-  if (trafficPage.value > trafficTotalPages.value) {
-    trafficPage.value = trafficTotalPages.value
-  }
-})
-
-const addPeer = async () => {
-  if (!newPeerName.value) return
-  addError.value = ''
-  const data = { name: newPeerName.value }
-  if (newPeerIP.value) {
-    data.allowed_ips = newPeerIP.value
-  }
-  try {
-    const res = await axios.post('/api/peers', data)
-    noteWarning(res.data)
-    closeAddModal()
-    await loadPeers()
-    if (!sortKey.value) {
-      page.value = Math.max(1, Math.ceil(peers.value.length / pageSize.value))
-    } else {
-      page.value = 1
-    }
-  } catch (e) {
-    addError.value = e.response?.data?.error || '添加失败'
-  }
-}
-
-const closeAddModal = () => {
-  showAddModal.value = false
-  newPeerName.value = ''
-  newPeerIP.value = ''
-  addError.value = ''
-}
-
-const editPeer = (peer) => {
-  editingPeer.value = peer
-  editPeerName.value = peer.name
-}
-
-const savePeer = async () => {
-  if (!editPeerName.value) return
-  try {
-    await axios.put(`/api/peers/${editingPeer.value.id}`, { name: editPeerName.value })
-    editingPeer.value = null
-    loadPeers()
-  } catch (e) {
-    showToast(e.response?.data?.error || '保存失败')
-  }
-}
-
-const confirmToggle = (peer) => {
-  confirmModal.value = {
-    show: true,
-    title: peer.enabled ? '禁用客户端' : '启用客户端',
-    message: `确定要${peer.enabled ? '禁用' : '启用'} "${peer.name}" 吗？`,
-    type: 'warning',
-    confirmText: peer.enabled ? '禁用' : '启用',
-    onConfirm: () => doToggle(peer)
-  }
-}
-
-const doToggle = async (peer) => {
-  try {
-    const res = await axios.post(`/api/peers/${peer.id}/toggle`, { enabled: !peer.enabled })
-    noteWarning(res.data)
-    confirmModal.value.show = false
-    loadPeers()
-  } catch (e) {
-    showToast(e.response?.data?.error || '操作失败')
-  }
-}
-
-const confirmDelete = (peer) => {
-  confirmModal.value = {
-    show: true,
-    title: '删除客户端',
-    message: `确定要删除 "${peer.name}" 吗？此操作不可恢复。`,
-    type: 'danger',
-    confirmText: '删除',
-    onConfirm: () => doDelete(peer)
-  }
-}
-
-const doDelete = async (peer) => {
-  try {
-    const res = await axios.delete(`/api/peers/${peer.id}`)
-    noteWarning(res.data)
-    confirmModal.value.show = false
-    loadPeers()
-  } catch (e) {
-    showToast(e.response?.data?.error || '删除失败')
-  }
-}
-
-const downloadConfig = async (peer) => {
-  if (!peer.has_private_key) {
-    showToast('导入的客户端没有私钥，无法生成配置')
-    return
-  }
-  try {
-    const res = await axios.get(`/api/peers/${peer.id}/config`, { responseType: 'blob' })
-    const url = window.URL.createObjectURL(new Blob([res.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `${peer.name}.conf`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-  } catch (e) {
-    showToast(e.response?.data?.error || '下载配置失败')
-  }
-}
-
-const closeTraffic = () => {
-  trafficPeer.value = null
-  trafficReport.value = { rx: 0, tx: 0, days: [] }
-  trafficLoading.value = false
+const clearTraffic = () => {
+  if (trafficOpen.value) return
+  trafficReport.value = { rx: 0, tx: 0, days: [], today: '' }
   trafficPage.value = 1
 }
 
 const openTraffic = async (peer) => {
+  const request = ++trafficRequest
   trafficPeer.value = peer
   trafficLoading.value = true
-  trafficReport.value = { rx: 0, tx: 0, days: [] }
+  trafficReport.value = { rx: 0, tx: 0, days: [], today: '' }
   trafficPage.value = 1
+  trafficOpen.value = true
   try {
     const res = await axios.get(`/api/peers/${peer.id}/traffic`)
-    if (trafficPeer.value?.id !== peer.id) return
+    if (request !== trafficRequest) return
     trafficReport.value = {
       rx: Number(res.data?.rx) || 0,
       tx: Number(res.data?.tx) || 0,
-      days: res.data?.days || []
+      days: res.data?.days || [],
+      today: res.data?.today || ''
     }
   } catch (e) {
-    if (trafficPeer.value?.id !== peer.id) return
-    showToast(e.response?.data?.error || '获取流量失败')
-    closeTraffic()
+    if (request !== trafficRequest) return
+    toast.error(errorMessage(e, '获取流量失败'))
+    trafficOpen.value = false
   } finally {
-    if (trafficPeer.value?.id === peer.id) {
-      trafficLoading.value = false
-    }
+    if (request === trafficRequest) trafficLoading.value = false
   }
 }
 
-const closeQR = () => {
-  qrPeer.value = null
-  if (qrCodeUrl.value) {
-    window.URL.revokeObjectURL(qrCodeUrl.value)
-    qrCodeUrl.value = ''
+watch(configOpen, (open) => {
+  if (!open) {
+    configRequest++
+    setTimeout(clearConfig, 300)
   }
-}
-
-const showQR = async (peer) => {
-  if (!peer.has_private_key) {
-    showToast('导入的客户端没有私钥，无法生成二维码')
-    return
+})
+watch(trafficOpen, (open) => {
+  if (!open) {
+    trafficRequest++
+    setTimeout(clearTraffic, 300)
   }
-  closeQR()
-  qrPeer.value = peer
-  try {
-    const res = await axios.get(`/api/peers/${peer.id}/qrcode`, { responseType: 'blob' })
-    qrCodeUrl.value = window.URL.createObjectURL(res.data)
-  } catch (e) {
-    showToast(e.response?.data?.error || '获取二维码失败')
-  }
-}
-
-onMounted(() => {
-  loadPeers()
-  loadStatus()
-  statusTimer.value = setInterval(loadStatus, 5000)
 })
 
-onUnmounted(() => {
-  if (statusTimer.value) {
-    clearInterval(statusTimer.value)
-  }
-  closeQR()
-  closeTraffic()
-})
+onBeforeUnmount(revokeQr)
 </script>
