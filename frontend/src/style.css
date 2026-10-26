@@ -31,6 +31,13 @@
 }
 
 @layer base {
+  /* 始终显示滚动条轨道（滚动条本身是 6px 的透明轨道，没有内容溢出时看不见）。
+     页面一旦短到不需要滚动条，整个页面和居中的顶栏就会横向跳 6px；切换页面、
+     加载中、筛选后列表变短都会遇到。scrollbar-gutter 对自定义的 ::-webkit-scrollbar 不生效，所以直接用 overflow-y: scroll。 */
+  html {
+    overflow-y: scroll;
+  }
+
   body {
     @apply min-h-screen bg-gray-100 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100;
   }
@@ -199,8 +206,10 @@
   }
 
   /* ---------- 弹窗 ---------- */
+  /* overscroll-contain：滚轮和触摸在弹窗上不会带动后面的页面，所以不需要给 html 加 overflow:hidden
+     （那样滚动条会消失，整个页面横向跳一下） */
   .modal-overlay {
-    @apply fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4;
+    @apply fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/50 p-4;
   }
 
   .modal-panel {
@@ -214,7 +223,7 @@
 
   /* ---------- 导航 ---------- */
   .nav-link {
-    @apply inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-gray-700
+    @apply inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-gray-700 transition-colors duration-150
       hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700;
   }
 
@@ -288,6 +297,20 @@
   transition: transform 0.25s ease;
 }
 
+/* 页面切换：旧页面快速淡出，新页面再淡入。只改 opacity，不做位移，避免切换时画面晃动 */
+.page-enter-active {
+  transition: opacity 0.16s ease-out;
+}
+
+.page-leave-active {
+  transition: opacity 0.09s ease-in;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+
 /* 弹窗动画 */
 .modal-enter-active,
 .modal-leave-active {
@@ -317,6 +340,8 @@
 
   .toast-enter-active,
   .toast-leave-active,
+  .page-enter-active,
+  .page-leave-active,
   .modal-enter-active,
   .modal-leave-active,
   .modal-enter-active .modal-panel,

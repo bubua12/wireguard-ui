@@ -52,14 +52,23 @@
           @click="filter = f.key"
         >
           {{ f.label }}
-          <span class="tabular-nums opacity-75">{{ counts[f.key] }}</span>
+          <span class="min-w-[2ch] text-center tabular-nums opacity-75">{{ counts[f.key] }}</span>
         </button>
       </div>
 
       <div class="card overflow-hidden">
         <!-- 桌面端：表格 -->
-        <div class="hidden overflow-x-auto md:block">
-          <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div class="hidden overflow-x-auto lg:block">
+          <!-- 固定列宽、固定行高：握手时间和流量每 5 秒变一次，自动列宽会让整张表左右抖动 -->
+          <table class="w-full table-fixed divide-y divide-gray-200 dark:divide-gray-700">
+            <colgroup>
+              <col />
+              <col class="w-[140px]" />
+              <col class="w-[88px]" />
+              <col class="w-[168px]" />
+              <col class="w-[200px]" />
+              <col class="w-[216px]" />
+            </colgroup>
             <thead class="bg-gray-50 dark:bg-gray-700/60">
               <tr>
                 <th class="th">
@@ -92,8 +101,10 @@
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
               <template v-if="loading">
-                <tr v-for="n in 5" :key="`sk-${n}`">
-                  <td v-for="c in 6" :key="c" class="px-4 py-4"><div class="skeleton h-5 w-full max-w-[8rem]"></div></td>
+                <tr v-for="n in pageSize" :key="`sk-${n}`">
+                  <td v-for="c in 6" :key="c" class="px-4 py-3">
+                    <div class="flex h-9 items-center"><div class="skeleton h-4 w-full max-w-[7rem]"></div></div>
+                  </td>
                 </tr>
               </template>
               <tr v-else-if="sortedPeers.length === 0">
@@ -103,98 +114,111 @@
                   <button v-else type="button" class="btn-secondary mt-4" @click="clearFilters">清除筛选</button>
                 </td>
               </tr>
-              <tr v-for="peer in pagedPeers" :key="peer.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-700/30">
-                <td class="whitespace-nowrap px-4 py-3.5 text-gray-900 dark:text-white">
-                  <div class="flex items-center">
-                    <span class="status-dot" :class="dotClass(peer)"></span>
-                    <span class="max-w-[16rem] truncate font-medium" :title="peer.name">{{ peer.name }}</span>
-                    <span v-if="!peer.has_private_key" class="badge-import ml-2" title="从系统配置导入，没有私钥，无法下载或扫码">导入</span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm text-gray-500 dark:text-gray-400">{{ peer.allowed_ips }}</td>
-                <td class="whitespace-nowrap px-4 py-3.5">
-                  <span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm">
-                  <div class="text-gray-700 dark:text-gray-200" :title="handshakeTitle(peer)">{{ handshakeText(peer) }}</div>
-                  <div v-if="endpointOf(peer)" class="text-xs text-gray-400 dark:text-gray-500" :class="{ 'select-none tracking-wider': !showAddresses }">
-                    {{ showAddresses ? endpointOf(peer) : '••••••••' }}
-                  </div>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5">
-                  <button
-                    type="button"
-                    class="text-left text-sm tabular-nums text-gray-700 hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400"
-                    title="累计流量（下行 / 上行），点击查看按天明细"
-                    @click="openTraffic(peer)"
-                  >
-                    {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
-                  </button>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm">
-                  <PeerActions
-                    :peer="peer"
-                    @edit="openEdit(peer)"
-                    @toggle="toggleEnabled(peer)"
-                    @download="downloadConfig(peer)"
-                    @config="openConfig(peer)"
-                    @delete="deletePeer(peer)"
-                  />
-                </td>
-              </tr>
+              <!-- 用 v-else 接在骨架屏后面：数据先到、状态还没到时，骨架行和真实行不能同时出现 -->
+              <template v-else>
+                <tr v-for="peer in pagedPeers" :key="peer.id" class="hover:bg-gray-50/70 dark:hover:bg-gray-700/30">
+                  <td class="px-4 py-3 text-gray-900 dark:text-white">
+                    <div class="flex h-9 items-center">
+                      <span class="status-dot" :class="dotClass(peer)"></span>
+                      <span class="min-w-0 truncate font-medium" :title="peer.name">{{ peer.name }}</span>
+                      <span v-if="!peer.has_private_key" class="badge-import ml-2 shrink-0" title="从系统配置导入，没有私钥，无法下载或扫码">导入</span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                    <div class="flex h-9 items-center"><span class="truncate">{{ peer.allowed_ips }}</span></div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex h-9 items-center"><span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span></div>
+                  </td>
+                  <td class="px-4 py-3 text-sm">
+                    <div class="flex h-9 flex-col justify-center">
+                      <div class="truncate leading-5 text-gray-700 dark:text-gray-200" :title="handshakeTitle(peer)">{{ handshakeText(peer) }}</div>
+                      <div
+                        class="truncate text-xs leading-4 text-gray-400 dark:text-gray-500"
+                        :class="{ 'select-none tracking-wider': endpointOf(peer) && !showAddresses }"
+                        :title="showAddresses ? endpointOf(peer) : undefined"
+                      >
+                        {{ endpointOf(peer) ? (showAddresses ? endpointOf(peer) : '••••••••') : '\u00a0' }}
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex h-9 items-center">
+                      <button
+                        type="button"
+                        class="truncate text-left text-sm tabular-nums text-gray-700 hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400"
+                        title="累计流量（下行 / 上行），点击查看按天明细"
+                        @click="openTraffic(peer)"
+                      >
+                        {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
+                      </button>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3 text-sm">
+                    <div class="flex h-9 items-center justify-end">
+                      <PeerActions
+                        :peer="peer"
+                        @edit="openEdit(peer)"
+                        @toggle="toggleEnabled(peer)"
+                        @download="downloadConfig(peer)"
+                        @config="openConfig(peer)"
+                        @delete="deletePeer(peer)"
+                      />
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
 
         <!-- 手机端：卡片 -->
-        <div class="divide-y divide-gray-100 md:hidden dark:divide-gray-700">
+        <div class="divide-y divide-gray-100 lg:hidden dark:divide-gray-700">
           <template v-if="loading">
-            <div v-for="n in 3" :key="`skc-${n}`" class="space-y-2 p-4">
-              <div class="skeleton h-5 w-1/2"></div>
-              <div class="skeleton h-4 w-1/3"></div>
-            </div>
+            <!-- 用 padding 而不是 margin：相邻 margin 会塌陷，骨架会比真实卡片矮，还会把整个列表顶下去 -->
+            <div v-for="n in pageSize" :key="`skc-${n}`" class="p-4"><div class="skeleton h-[172px]"></div></div>
           </template>
           <div v-else-if="sortedPeers.length === 0" class="px-4 py-10 text-center">
             <p class="text-gray-500 dark:text-gray-400">{{ emptyMessage }}</p>
             <button v-if="peers.length === 0" type="button" class="btn-primary mt-4" @click="openAdd">添加第一个客户端</button>
             <button v-else type="button" class="btn-secondary mt-4" @click="clearFilters">清除筛选</button>
           </div>
-          <div v-for="peer in pagedPeers" :key="peer.id" class="space-y-3 p-4">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex min-w-0 items-center">
-                <span class="status-dot" :class="dotClass(peer)"></span>
-                <span class="truncate font-medium text-gray-900 dark:text-white">{{ peer.name }}</span>
-                <span v-if="!peer.has_private_key" class="badge-import ml-2">导入</span>
+          <template v-else>
+            <div v-for="peer in pagedPeers" :key="peer.id" class="space-y-3 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex min-w-0 items-center">
+                  <span class="status-dot" :class="dotClass(peer)"></span>
+                  <span class="truncate font-medium text-gray-900 dark:text-white">{{ peer.name }}</span>
+                  <span v-if="!peer.has_private_key" class="badge-import ml-2">导入</span>
+                </div>
+                <span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span>
               </div>
-              <span :class="statusBadge(peer).class">{{ statusBadge(peer).label }}</span>
-            </div>
-            <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <dt class="text-gray-500 dark:text-gray-400">IP 地址</dt>
-              <dd class="text-right text-gray-800 dark:text-gray-200">{{ peer.allowed_ips }}</dd>
-              <dt class="text-gray-500 dark:text-gray-400">最近握手</dt>
-              <dd class="text-right text-gray-800 dark:text-gray-200">{{ handshakeText(peer) }}</dd>
-              <template v-if="endpointOf(peer)">
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <dt class="text-gray-500 dark:text-gray-400">IP 地址</dt>
+                <dd class="text-right text-gray-800 dark:text-gray-200">{{ peer.allowed_ips }}</dd>
+                <dt class="text-gray-500 dark:text-gray-400">最近握手</dt>
+                <dd class="text-right text-gray-800 dark:text-gray-200">{{ handshakeText(peer) }}</dd>
                 <dt class="text-gray-500 dark:text-gray-400">来源地址</dt>
-                <dd class="text-right text-gray-800 dark:text-gray-200" :class="{ 'select-none tracking-wider': !showAddresses }">
-                  {{ showAddresses ? endpointOf(peer) : '••••••••' }}
+                <dd class="truncate text-right text-gray-800 dark:text-gray-200" :class="{ 'select-none tracking-wider': endpointOf(peer) && !showAddresses }">
+                  {{ endpointOf(peer) ? (showAddresses ? endpointOf(peer) : '••••••••') : '—' }}
                 </dd>
-              </template>
-              <dt class="text-gray-500 dark:text-gray-400">流量 ↓ / ↑</dt>
-              <dd class="text-right">
-                <button type="button" class="tabular-nums text-blue-600 dark:text-blue-400" @click="openTraffic(peer)">
-                  {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
-                </button>
-              </dd>
-            </dl>
-            <PeerActions
-              :peer="peer"
-              @edit="openEdit(peer)"
-              @toggle="toggleEnabled(peer)"
-              @download="downloadConfig(peer)"
-              @config="openConfig(peer)"
-              @delete="deletePeer(peer)"
-            />
-          </div>
+                <dt class="text-gray-500 dark:text-gray-400">流量 ↓ / ↑</dt>
+                <dd class="text-right">
+                  <button type="button" class="tabular-nums text-blue-600 dark:text-blue-400" @click="openTraffic(peer)">
+                    {{ formatBytes(downOf(statusOf(peer))) }} / {{ formatBytes(upOf(statusOf(peer))) }}
+                  </button>
+                </dd>
+              </dl>
+              <PeerActions
+                :peer="peer"
+                @edit="openEdit(peer)"
+                @toggle="toggleEnabled(peer)"
+                @download="downloadConfig(peer)"
+                @config="openConfig(peer)"
+                @delete="deletePeer(peer)"
+              />
+            </div>
+          </template>
         </div>
 
         <div v-if="sortedPeers.length > 0" class="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -305,7 +329,13 @@
         <TrafficChart :days="trafficChartDays" :height="160" />
         <div v-if="trafficReport.days.length === 0" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">暂无按天数据，有流量后会自动记录。</div>
         <template v-else>
-          <table class="mt-4 min-w-full text-sm">
+          <table class="mt-4 w-full table-fixed text-sm">
+            <colgroup>
+              <col class="w-[34%]" />
+              <col class="w-[22%]" />
+              <col class="w-[22%]" />
+              <col class="w-[22%]" />
+            </colgroup>
             <thead>
               <tr class="text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <th class="py-2 pr-4">日期</th>
@@ -336,7 +366,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import axios from 'axios'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
@@ -849,4 +879,13 @@ watch(trafficOpen, (open) => {
 })
 
 onBeforeUnmount(revokeQr)
+
+// The page stays cached by <KeepAlive> when the user switches tabs; a modal left
+// open would keep its Esc handler alive behind the new page.
+onDeactivated(() => {
+  addOpen.value = false
+  editOpen.value = false
+  configOpen.value = false
+  trafficOpen.value = false
+})
 </script>

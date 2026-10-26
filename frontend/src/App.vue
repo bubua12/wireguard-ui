@@ -58,8 +58,16 @@
       </div>
     </header>
 
-    <main :class="isLoginPage ? '' : 'mx-auto max-w-7xl px-4 pb-10 pt-24'">
-      <router-view />
+    <main :class="isLoginPage ? '' : 'mx-auto min-h-screen max-w-7xl px-4 pb-10 pt-24'">
+      <!-- 页面常驻缓存：切回来时直接显示上次的内容再静默刷新，不会重新出骨架屏；
+           out-in 让旧页面先淡出再淡入新页面，过程中页面高度不会塌掉 -->
+      <router-view v-slot="{ Component }">
+        <Transition name="page" mode="out-in" @before-enter="scrollToTop">
+          <KeepAlive :include="cachedViews">
+            <component :is="Component" />
+          </KeepAlive>
+        </Transition>
+      </router-view>
     </main>
 
     <ToastHost />
@@ -87,7 +95,13 @@ const nav = [
   { to: '/settings', label: '设置', icon: 'cog' }
 ]
 
+// Matched against each view's component name (taken from its file name).
+const cachedViews = ['Dashboard', 'Peers', 'Settings']
+
 const isLoginPage = computed(() => route.path === '/login')
+
+// The old page has already faded out when this runs, so nothing visibly jumps.
+const scrollToTop = () => window.scrollTo(0, 0)
 
 const logout = () => {
   clearToken()

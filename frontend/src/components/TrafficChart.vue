@@ -92,7 +92,10 @@ let observer = null
 
 onMounted(() => {
   const measure = () => {
-    if (root.value) width.value = Math.max(240, Math.floor(root.value.clientWidth))
+    // A cached page that is not on screen reports width 0; keep the last real size
+    // so the chart does not redraw at the wrong width when it comes back.
+    const w = root.value ? Math.floor(root.value.clientWidth) : 0
+    if (w > 0) width.value = Math.max(240, w)
   }
   measure()
   if (typeof ResizeObserver !== 'undefined') {

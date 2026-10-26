@@ -7,9 +7,9 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button
-          v-if="!loading"
           type="button"
-          class="btn-sm inline-flex items-center rounded-md bg-yellow-100 px-3 py-2 text-sm font-medium text-yellow-700 transition-colors hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50"
+          :disabled="loading"
+          class="btn-sm inline-flex items-center rounded-md bg-yellow-100 px-3 py-2 text-sm font-medium text-yellow-700 transition-colors hover:bg-yellow-200 disabled:pointer-events-none disabled:opacity-50 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50"
           @click="openImportModal"
         >
           <Icon name="upload" class="mr-1.5 h-4 w-4" />从系统配置文件导入
@@ -20,15 +20,13 @@
       </div>
     </div>
 
-    <div v-if="loading" class="space-y-4" aria-busy="true">
-      <div class="skeleton h-40 w-full"></div>
-      <div class="skeleton h-40 w-full"></div>
-    </div>
+    <InterfaceControls v-if="!loading && !isNew && status.configured" :status="status" :pending-restart="pendingRestart" @changed="onControlChanged" />
+    <!-- 服务器配置或状态还没回来时先占住接口卡片的位置，回来后下面的表单不会被顶下去 -->
+    <div v-else-if="loading || (!isNew && !statusLoaded)" class="skeleton h-[184px] w-full rounded-xl sm:h-[88px]" aria-busy="true"></div>
 
-    <template v-else>
-      <InterfaceControls v-if="!isNew && status.configured" :status="status" :pending-restart="pendingRestart" @changed="onControlChanged" />
-
-      <form class="space-y-6" @submit.prevent="save">
+    <!-- 表单一直是真实结构，加载期间只是禁用，数据到了原地填充，任何屏幕宽度下页面都不会跳 -->
+    <form class="space-y-6" @submit.prevent="save">
+      <fieldset :disabled="loading" class="m-0 min-w-0 space-y-6 border-0 p-0 transition-opacity" :class="{ 'opacity-60': loading }">
         <section class="card p-6">
           <h2 class="card-title">基本配置</h2>
           <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -87,7 +85,7 @@
           </div>
         </section>
 
-        <section v-if="!isNew && form.public_key" class="card p-6">
+        <section v-if="!loading && !isNew && form.public_key" class="card p-6">
           <h2 class="card-title">服务器公钥</h2>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">手动配置客户端时，把它填进 [Peer] 的 PublicKey。</p>
           <button
@@ -100,21 +98,21 @@
             <Icon name="copy" class="h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200" />
           </button>
         </section>
+      </fieldset>
 
-        <div class="flex flex-wrap items-center gap-3">
-          <button type="submit" class="btn-primary" :disabled="saving || (!isNew && !dirty)">
-            <span v-if="saving" class="spinner"></span>{{ isNew ? '创建服务器' : '保存' }}
-          </button>
-          <button v-if="dirty && !isNew" type="button" class="btn-secondary" :disabled="saving" @click="resetForm">还原</button>
-          <span v-if="dirty && !isNew" class="inline-flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
-            <Icon name="warning" class="h-4 w-4" />有未保存的修改
-          </span>
-          <p v-else-if="!isNew" class="text-sm text-gray-500 dark:text-gray-400">
-            保存只写入数据库。要让修改生效，请用上方的「同步配置」；地址 / MTU / NAT 需要「重启接口」。
-          </p>
-        </div>
-      </form>
-    </template>
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn-primary" :disabled="loading || saving || (!isNew && !dirty)">
+          <span v-if="saving" class="spinner"></span>{{ isNew && !loading ? '创建服务器' : '保存' }}
+        </button>
+        <button v-if="dirty && !isNew" type="button" class="btn-secondary" :disabled="saving" @click="resetForm">还原</button>
+        <span v-if="dirty && !isNew" class="inline-flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+          <Icon name="warning" class="h-4 w-4" />有未保存的修改
+        </span>
+        <p v-else-if="!isNew" class="text-sm text-gray-500 dark:text-gray-400">
+          保存只写入数据库。要让修改生效，请用上方的「同步配置」；地址 / MTU / NAT 需要「重启接口」。
+        </p>
+      </div>
+    </form>
 
     <!-- 导入现有配置 -->
     <Modal v-model="showImportModal" title="导入现有配置" size="lg" persistent>
@@ -171,7 +169,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import axios from 'axios'
 import Icon from '../components/Icon.vue'
@@ -216,6 +214,7 @@ const isNew = ref(true)
 const loading = ref(true)
 const saving = ref(false)
 const status = ref({ configured: false })
+const statusLoaded = ref(false)
 const pendingRestart = ref(false)
 
 const showImportModal = ref(false)
@@ -266,6 +265,7 @@ const loadStatus = async () => {
   try {
     const res = await axios.get('/api/status', { timeout: 10000 })
     status.value = res.data
+    statusLoaded.value = true
   } catch (e) {
     // the interface card just keeps its last state
   }
@@ -273,9 +273,13 @@ const loadStatus = async () => {
 
 const { refresh: refreshStatus } = usePolling(loadStatus, 10000)
 
-onMounted(async () => {
+const loadServer = async () => {
+  // Coming back re-reads quietly. Remember the snapshot so a keystroke during
+  // this request is not replaced by the response.
+  const stamp = snapshot.value
   try {
     const res = await axios.get('/api/server')
+    if (dirty.value || snapshot.value !== stamp) return
     applyServer(res.data)
     isNew.value = false
   } catch (e) {
@@ -283,6 +287,22 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(loadServer)
+
+// The page is cached by <KeepAlive>: coming back shows the last state at once and
+// re-reads the server settings quietly, unless there are unsaved edits.
+onActivated(() => {
+  if (!loading.value && !dirty.value) loadServer()
+})
+
+// Leaving with unsaved edits was confirmed, so drop them rather than showing
+// them again later; close dialogs so none outlives the page.
+onDeactivated(() => {
+  showImportModal.value = false
+  showPwdModal.value = false
+  if (dirty.value && snapshot.value) resetForm()
 })
 
 onBeforeRouteLeave(() => {

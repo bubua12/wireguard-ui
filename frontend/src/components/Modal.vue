@@ -38,7 +38,6 @@
 <script>
 // Open modals, newest last: only the top one reacts to Esc.
 const stack = []
-let locks = 0
 </script>
 
 <script setup>
@@ -92,7 +91,6 @@ const focusFirst = () => {
 const open = async () => {
   previouslyFocused = document.activeElement
   stack.push(token)
-  if (locks++ === 0) document.body.style.overflow = 'hidden'
   window.addEventListener('keydown', onKeydown)
   await nextTick()
   focusFirst()
@@ -102,7 +100,6 @@ const release = () => {
   const i = stack.indexOf(token)
   if (i < 0) return
   stack.splice(i, 1)
-  if (--locks === 0) document.body.style.overflow = ''
   window.removeEventListener('keydown', onKeydown)
   if (previouslyFocused && document.contains(previouslyFocused)) previouslyFocused.focus({ preventScroll: true })
   previouslyFocused = null

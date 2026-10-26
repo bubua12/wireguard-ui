@@ -10,12 +10,19 @@
       </span>
     </div>
 
+    <!-- 骨架屏的网格和各块高度与真实内容一致，数据到了只是原地填充，页面不会再跳 -->
     <div v-if="loading" class="space-y-6" aria-busy="true">
-      <div class="skeleton h-28 w-full"></div>
+      <div class="skeleton h-[184px] w-full rounded-xl sm:h-[88px]"></div>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div v-for="n in 4" :key="n" class="skeleton h-24"></div>
+        <div v-for="n in 4" :key="n" class="skeleton h-[112px] rounded-xl"></div>
       </div>
-      <div class="skeleton h-64 w-full"></div>
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div class="space-y-6 lg:col-span-2">
+          <div class="skeleton h-[362px] rounded-xl min-[480px]:h-[322px]"></div>
+          <div class="skeleton h-[200px] rounded-xl"></div>
+        </div>
+        <div class="skeleton h-[434px] rounded-xl"></div>
+      </div>
     </div>
 
     <div v-else-if="loadError" class="card p-8 text-center">
