@@ -20,4 +20,6 @@ ENV WG_LISTEN=0.0.0.0:8081 \
     WG_CONFIG_DIR=/etc/wireguard
 EXPOSE 8081
 VOLUME ["/data", "/etc/wireguard"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${WG_LISTEN##*:}/api/health" >/dev/null || exit 1
 ENTRYPOINT ["wireguard-ui"]

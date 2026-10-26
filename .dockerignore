@@ -1,0 +1,21 @@
+# Keep the build context small and free of local secrets/state.
+.git
+.github
+.env
+.env.*
+!.env.example
+**/.DS_Store
+**/.idea
+**/.vscode
+
+# Rebuilt inside the image
+frontend/node_modules
+frontend/dist
+bin
+
+# Local runtime state: never bake a database or JWT secret into an image
+data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/.jwt_secret
