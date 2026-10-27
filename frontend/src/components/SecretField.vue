@@ -16,9 +16,14 @@
       data-lpignore="true"
       data-1p-ignore="true"
       data-form-type="other"
-      class="input-field pr-10"
-      :class="{ 'secret-masked': !asPassword && !visible }"
+      class="peer input-field pr-10"
+      :class="{ 'input-field-icon': icon, 'secret-masked': !asPassword && !visible }"
       @input="$emit('update:modelValue', $event.target.value)"
+    />
+    <Icon
+      v-if="icon"
+      :name="icon"
+      class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-colors peer-focus:text-blue-500"
     />
     <button
       type="button"
@@ -44,6 +49,8 @@ const props = defineProps({
   required: { type: Boolean, default: false },
   minlength: { type: Number, default: undefined },
   asPassword: { type: Boolean, default: false },
+  // Optional leading icon (an Icon name).
+  icon: { type: String, default: '' },
   id: { type: String, default: '' },
   // Login forms pass name/autocomplete so password managers still work.
   name: { type: String, default: '' },

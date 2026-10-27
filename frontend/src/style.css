@@ -30,6 +30,21 @@
   background: rgba(107, 114, 128, 0.8);
 }
 
+/* 登录页的渐变背景要铺满整个窗口。下面 html 上常驻的 overflow-y: scroll 会一直留出 6px 的滚动条轨道，
+   轨道是透明的，会露出 body 的底色，在渐变右边形成一条灰白边。所以显示登录页时（App.vue 会给 html 加上这个 class）
+   把滚动条藏起来，页面照样能滚动；亮色下画布底色也换成蓝色，万一边缘露出画布（比如触控板下拉回弹）也是蓝色 */
+html.hide-scrollbar {
+  scrollbar-width: none;
+}
+
+html.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+html.hide-scrollbar:not(.dark) body {
+  background-color: theme('colors.blue.800');
+}
+
 @layer base {
   /* 始终显示滚动条轨道（滚动条本身是 6px 的透明轨道，没有内容溢出时看不见）。
      页面一旦短到不需要滚动条，整个页面和居中的顶栏就会横向跳 6px；切换页面、
@@ -221,6 +236,14 @@
     @apply animate-pulse rounded bg-gray-200 dark:bg-gray-700;
   }
 
+  /* ---------- 登录页 ---------- */
+  .login-dots {
+    background-image: radial-gradient(rgb(255 255 255 / 0.16) 1px, transparent 1px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 85% at 35% 45%, #000 25%, transparent 100%);
+    mask-image: radial-gradient(ellipse 90% 85% at 35% 45%, #000 25%, transparent 100%);
+  }
+
   /* ---------- 导航 ---------- */
   .nav-link {
     @apply inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-gray-700 transition-colors duration-150
@@ -268,6 +291,44 @@
   50% {
     opacity: 0.5;
     box-shadow: 0 0 12px #22c55e;
+  }
+}
+
+/* 登录页网络示意图：圆点沿连线移动，圆环向外扩散。dashoffset 的位移正好是一个虚线周期，循环处不会跳 */
+.net-flow {
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 14;
+  animation: net-flow 1.2s linear infinite;
+}
+
+.net-flow-rev {
+  animation-direction: reverse;
+}
+
+@keyframes net-flow {
+  to {
+    stroke-dashoffset: -14.1;
+  }
+}
+
+.net-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: net-pulse 3.2s ease-out infinite;
+}
+
+.net-pulse-sm {
+  --net-pulse-scale: 1.8;
+}
+
+@keyframes net-pulse {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(var(--net-pulse-scale, 2.2));
   }
 }
 
@@ -334,7 +395,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-online {
+  .status-online,
+  .net-flow,
+  .net-pulse {
     animation: none;
   }
 

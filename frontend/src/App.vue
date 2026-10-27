@@ -62,7 +62,7 @@
       <!-- 页面常驻缓存：切回来时直接显示上次的内容再静默刷新，不会重新出骨架屏；
            out-in 让旧页面先淡出再淡入新页面，过程中页面高度不会塌掉 -->
       <router-view v-slot="{ Component }">
-        <Transition name="page" mode="out-in" @before-enter="scrollToTop">
+        <Transition name="page" mode="out-in" @before-enter="onBeforeEnter">
           <KeepAlive :include="cachedViews">
             <component :is="Component" />
           </KeepAlive>
@@ -76,7 +76,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import Icon from './components/Icon.vue'
@@ -98,10 +98,23 @@ const nav = [
 // Matched against each view's component name (taken from its file name).
 const cachedViews = ['Dashboard', 'Peers', 'Settings']
 
-const isLoginPage = computed(() => route.path === '/login')
+// The top bar and the content container follow the page that is on screen, not the route.
+// When the route changes the old page is still fading out; if the layout switched right away,
+// that page would be squeezed into the next page's container (the login page visibly shrank to
+// about 3/4 of its width and dropped below the header, the dashboard stretched on logout).
+// So the layout only switches once the old page is gone and the new one is about to appear.
+const isLoginPage = ref(false)
 
-// The old page has already faded out when this runs, so nothing visibly jumps.
-const scrollToTop = () => window.scrollTo(0, 0)
+// The login page fills the whole window, so it hides the scrollbar (see hide-scrollbar in style.css).
+// This has to switch together with the layout: a component's unmount hook already runs when the leave
+// animation starts, which would bring the scrollbar back (and shift the fading page by 6px) too early.
+watch(isLoginPage, (login) => document.documentElement.classList.toggle('hide-scrollbar', login))
+
+const onBeforeEnter = () => {
+  isLoginPage.value = route.path === '/login'
+  // The old page has already faded out when this runs, so nothing visibly jumps.
+  window.scrollTo(0, 0)
+}
 
 const logout = () => {
   clearToken()
